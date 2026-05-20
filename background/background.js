@@ -81,16 +81,29 @@ async function handleExportCurrent(format) {
 
   const filename = safeFilename(data.title, date, ext);
 
-  // Data URL is used instead of URL.createObjectURL() because createObjectURL
-  // is not reliably available in Chrome MV3 service workers across all versions.
-  // For typical chat exports (tens of KB) the encoding overhead is negligible.
-  const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+  // Blob + object URL instead of data URLs because Firefox MV3 blocks
+  // data: URLs in browser.downloads.download(). createObjectURL works
+  // in both Firefox event pages and Chrome MV3 service workers.
+  const mimeType = format === 'json' ? 'application/json' : 'text/markdown';
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
 
-  await browser.downloads.download({
-    url: dataUrl,
+  const downloadId = await browser.downloads.download({
+    url,
     filename,
     saveAs: false,
   });
+
+  // Revoke the object URL once the download finishes (or fails/is canceled)
+  // to free memory. Uses a one-shot listener scoped to this download ID.
+  function onChanged(delta) {
+    if (delta.id !== downloadId) return;
+    if (delta.state?.current === 'complete' || delta.state?.current === 'interrupted') {
+      URL.revokeObjectURL(url);
+      browser.downloads.onChanged.removeListener(onChanged);
+    }
+  }
+  browser.downloads.onChanged.addListener(onChanged);
 
   return { ok: true };
 }
