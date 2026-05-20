@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Archiver",
+  "version": "0.1.0",
+  "description": "Export AI chat conversations to Markdown or JSON.",
+
+  "permissions": [
+    "downloads",
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+
+  "host_permissions": [
+    "https://gemini.google.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*"
+  ],
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Chat Archiver"
+  },
+
+  "background": {
+    "service_worker": "background/background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content-scripts/shared.js", "content-scripts/gemini.js"]
+    },
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content-scripts/shared.js", "content-scripts/chatgpt.js"]
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content-scripts/shared.js", "content-scripts/claude.js"]
+    }
+  ],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "[email protected]",
+      "strict_min_version": "115.0"
+    }
+  }
+}
