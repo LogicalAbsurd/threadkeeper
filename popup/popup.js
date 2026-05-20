@@ -32,18 +32,42 @@ async function init() {
     $('#unsupported-msg').hidden = false;
   }
 
-  // --- Action buttons (stub — log intent, no scraping yet) ---
+  // --- Action buttons ---
 
-  $('#btn-export-current').addEventListener('click', () => {
-    console.log(`[Chat Archiver] Export current chat as ${getSelectedFormat()} from ${site.label}`);
+  $('#btn-export-current').addEventListener('click', async () => {
+    const btn = $('#btn-export-current');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Exporting\u2026';
+
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'EXPORT_CURRENT',
+        format: getSelectedFormat(),
+      });
+
+      if (response?.ok) {
+        btn.textContent = 'Exported!';
+        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+      } else {
+        console.error('[Chat Archiver]', response?.error);
+        btn.textContent = 'Export failed';
+        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+      }
+    } catch (err) {
+      console.error('[Chat Archiver] sendMessage error:', err);
+      btn.textContent = 'Export failed';
+      setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+    }
   });
 
+  // Stubs — bulk and selective export are Phase 4.
   $('#btn-export-all').addEventListener('click', () => {
-    console.log(`[Chat Archiver] Export all chats as ${getSelectedFormat()} from ${site.label}`);
+    console.log(`[Chat Archiver] Export all chats as ${getSelectedFormat()} — not yet implemented`);
   });
 
   $('#btn-export-select').addEventListener('click', () => {
-    console.log(`[Chat Archiver] Select chats to export as ${getSelectedFormat()} from ${site.label}`);
+    console.log(`[Chat Archiver] Select chats to export as ${getSelectedFormat()} — not yet implemented`);
   });
 
   // --- Settings pane toggle ---
