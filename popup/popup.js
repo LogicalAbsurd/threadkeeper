@@ -64,13 +64,22 @@ async function init() {
     }
   });
 
-  // Stubs — bulk and selective export are Phase 4.
-  $('#btn-export-all').addEventListener('click', () => {
-    console.log(`[Threadkeeper] Export all chats as ${getSelectedFormat()} — not yet implemented`);
+  $('#btn-export-all').addEventListener('click', async () => {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    const url = browser.runtime.getURL('export/export.html') +
+      `?mode=all&tabId=${tab.id}`;
+    await browser.tabs.create({ url });
+    window.close();
   });
 
-  $('#btn-export-select').addEventListener('click', () => {
-    console.log(`[Threadkeeper] Select chats to export as ${getSelectedFormat()} — not yet implemented`);
+  $('#btn-export-select').addEventListener('click', async () => {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    const url = browser.runtime.getURL('export/export.html') +
+      `?mode=select&tabId=${tab.id}`;
+    await browser.tabs.create({ url });
+    window.close();
   });
 
   // --- Settings pane toggle ---
@@ -84,18 +93,28 @@ async function init() {
     $('#settings-pane').hidden = true;
   });
 
-  // --- Persist format preference in storage ---
+  // --- Persist preferences in storage ---
 
-  const stored = await browser.storage.local.get('format');
+  const stored = await browser.storage.local.get(['format', 'bulkDelay']);
   if (stored.format) {
     const radio = document.querySelector(`input[name="format"][value="${stored.format}"]`);
     if (radio) radio.checked = true;
+  }
+  if (stored.bulkDelay != null) {
+    $('#setting-delay').value = stored.bulkDelay;
   }
 
   document.querySelectorAll('input[name="format"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       browser.storage.local.set({ format: getSelectedFormat() });
     });
+  });
+
+  $('#setting-delay').addEventListener('change', () => {
+    const val = parseInt($('#setting-delay').value, 10);
+    if (Number.isFinite(val) && val >= 0) {
+      browser.storage.local.set({ bulkDelay: val });
+    }
   });
 }
 

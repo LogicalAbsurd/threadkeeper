@@ -17,65 +17,318 @@
 //
 // Rules for this file (event-page lifecycle):
 //   - Register all listeners synchronously at the top level.
-//   - No global mutable state — use browser.storage for persistence.
-//   - The event page can be suspended at any time when idle.
+//   - No global mutable state that must survive suspension — use browser.storage.
+//   - The event page stays alive while an async chain is running (e.g., during
+//     a bulk export loop), but we snapshot state to storage after each
+//     conversation for crash recovery.
 
 'use strict';
 
 console.log('Threadkeeper background loaded');
 
+
+// --- Export state ---
+// In-memory for speed during active export. Synced to browser.storage.local
+// after each conversation for crash recovery. The accumulated[] array is only
+// populated when outputMode is 'combined' or 'both' — for 'individual' mode,
+// per-chat data is discarded after download to avoid ~50-100MB memory at 150+ chats.
+
+let exportState = {
+  phase: 'idle',       // 'idle'|'running'|'paused'|'complete'|'cancelled'
+  tabId: null,
+  format: 'markdown',  // 'markdown'|'json'|'both'
+  outputMode: 'both',  // 'individual'|'combined'|'both'
+  chatIds: [],
+  currentIndex: 0,
+  currentTitle: '',
+  completed: [],       // [{id, title}]
+  failed: [],          // [{id, title, error}]
+  startTime: null,
+  accumulated: [],     // conversation data objects for combined output
+};
+
+
 // --- Message routing ---
-// Registered synchronously at top level so it survives service worker restarts.
+// Registered synchronously at top level so it survives event-page restarts.
 
-browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type !== 'EXPORT_CURRENT') return;
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  switch (message.type) {
+    case 'EXPORT_CURRENT':
+      handleExportCurrent(message.format)
+        .then(sendResponse)
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
 
-  handleExportCurrent(message.format)
-    .then(sendResponse)
-    .catch((err) => sendResponse({ ok: false, error: err.message }));
+    case 'LIST_CONVERSATIONS':
+      handleListConversations(message.tabId)
+        .then(sendResponse)
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
 
-  // Return true to keep the message channel open for the async sendResponse.
-  return true;
+    case 'START_BULK_EXPORT':
+      handleStartBulkExport(message)
+        .then(sendResponse)
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+
+    case 'PAUSE_EXPORT':
+      if (exportState.phase === 'running') exportState.phase = 'paused';
+      broadcastProgress();
+      sendResponse({ ok: true });
+      return;
+
+    case 'RESUME_EXPORT':
+      if (exportState.phase === 'paused') {
+        exportState.phase = 'running';
+        broadcastProgress();
+      }
+      sendResponse({ ok: true });
+      return;
+
+    case 'CANCEL_EXPORT':
+      if (exportState.phase === 'running' || exportState.phase === 'paused') {
+        exportState.phase = 'cancelled';
+        broadcastProgress();
+      }
+      sendResponse({ ok: true });
+      return;
+
+    case 'GET_EXPORT_STATE':
+      sendResponse(getExportStateSummary());
+      return;
+
+    case 'RETRY_FAILED':
+      handleRetryFailed()
+        .then(sendResponse)
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+      return true;
+
+    case 'CONTENT_READY':
+      // Handled by the one-shot listener in waitForContentReady().
+      // Main dispatch ignores it.
+      return;
+  }
 });
+
+
+// --- Single-chat export (Phase 3, refactored) ---
 
 async function handleExportCurrent(format) {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) {
-    return { ok: false, error: 'No active tab found.' };
-  }
+  if (!tab?.id) return { ok: false, error: 'No active tab found.' };
 
   let response;
   try {
     response = await browser.tabs.sendMessage(tab.id, { type: 'PARSE_CURRENT' });
   } catch (_err) {
-    // sendMessage throws if no content script is listening — e.g., the user
-    // is on a supported domain but the page hasn't finished loading, or the
-    // content script errored on injection.
     return { ok: false, error: 'Content script not ready. Try refreshing the page.' };
   }
 
-  if (!response?.ok) {
-    return { ok: false, error: response?.error ?? 'Unknown scrape error.' };
+  if (!response?.ok) return { ok: false, error: response?.error ?? 'Unknown scrape error.' };
+
+  await downloadConversation(response.data, format);
+  return { ok: true };
+}
+
+
+// --- List conversations ---
+
+async function handleListConversations(tabId) {
+  const resolvedTabId = tabId || await findGeminiTabId();
+  if (!resolvedTabId) {
+    return { ok: false, error: 'No Gemini tab found. Open Gemini and try again.' };
   }
 
-  const { data } = response;
-  const date = new Date(data.exportedAt);
+  try {
+    return await browser.tabs.sendMessage(resolvedTabId, { type: 'LIST_CONVERSATIONS' });
+  } catch (_err) {
+    return { ok: false, error: 'Content script not ready on Gemini tab.' };
+  }
+}
 
-  let content, ext;
-  if (format === 'json') {
-    content = toJSON(data);
-    ext = 'json';
-  } else {
-    content = toMarkdown(data);
-    ext = 'md';
+async function findGeminiTabId() {
+  const tabs = await browser.tabs.query({ url: 'https://gemini.google.com/*' });
+  return tabs[0]?.id ?? null;
+}
+
+
+// --- Bulk export ---
+
+async function handleStartBulkExport({ tabId, chatIds, format, outputMode }) {
+  if (exportState.phase === 'running' || exportState.phase === 'paused') {
+    return { ok: false, error: 'Export already in progress.' };
   }
 
-  const filename = safeFilename(data.title, date, ext);
+  if (!chatIds || chatIds.length === 0) {
+    return { ok: false, error: 'No conversations selected.' };
+  }
 
-  // Blob + object URL instead of data URLs because Firefox MV3 blocks
-  // data: URLs in browser.downloads.download(). createObjectURL works
-  // in both Firefox event pages and Chrome MV3 service workers.
-  const mimeType = format === 'json' ? 'application/json' : 'text/markdown';
+  if (chatIds.length > 200) {
+    console.warn(`[Threadkeeper] Large export: ${chatIds.length} conversations.`);
+  }
+
+  exportState = {
+    phase: 'running',
+    tabId,
+    format: format || 'markdown',
+    outputMode: outputMode || 'both',
+    chatIds,
+    currentIndex: 0,
+    currentTitle: '',
+    completed: [],
+    failed: [],
+    startTime: new Date().toISOString(),
+    accumulated: [],
+  };
+
+  await saveStateToStorage();
+  broadcastProgress();
+
+  // Fire-and-forget — respond immediately so the export page can show progress.
+  runExport().catch((err) => {
+    console.error('[Threadkeeper] Export loop crashed:', err);
+    exportState.phase = 'cancelled';
+    broadcastProgress();
+  });
+
+  return { ok: true };
+}
+
+async function runExport() {
+  const delayMs = await getBulkDelay();
+  const needsAccumulation = exportState.outputMode !== 'individual';
+
+  for (let i = exportState.currentIndex; i < exportState.chatIds.length; i++) {
+    // Check for pause — spin-wait with 200ms granularity.
+    while (exportState.phase === 'paused') {
+      await sleep(200);
+    }
+    if (exportState.phase === 'cancelled') break;
+
+    exportState.currentIndex = i;
+    const chatId = exportState.chatIds[i];
+    exportState.currentTitle = '';
+    broadcastProgress();
+
+    try {
+      // Navigate the Gemini tab to this conversation.
+      await browser.tabs.update(exportState.tabId, {
+        url: `https://gemini.google.com/app/${chatId}`,
+      });
+
+      // Wait for the new content script to signal readiness with matching chatId.
+      await waitForContentReady(exportState.tabId, chatId, 15000);
+
+      // Parse the conversation from the newly loaded page.
+      const response = await browser.tabs.sendMessage(exportState.tabId, {
+        type: 'PARSE_CURRENT',
+      });
+
+      if (!response?.ok) throw new Error(response?.error || 'Parse failed');
+
+      const { data } = response;
+      exportState.currentTitle = data.title;
+
+      // Download individual file(s) if needed.
+      if (exportState.outputMode !== 'combined') {
+        await downloadConversation(data, exportState.format);
+      }
+
+      // Accumulate for combined output only when needed.
+      if (needsAccumulation) {
+        exportState.accumulated.push(data);
+      }
+
+      exportState.completed.push({ id: chatId, title: data.title });
+
+    } catch (err) {
+      console.error(`[Threadkeeper] Failed to export ${chatId}:`, err);
+      exportState.failed.push({
+        id: chatId,
+        title: exportState.currentTitle || chatId,
+        error: err.message,
+      });
+    }
+
+    await saveStateToStorage();
+    broadcastProgress();
+
+    // Rate-limit between navigations.
+    if (i < exportState.chatIds.length - 1) {
+      await sleep(delayMs);
+    }
+  }
+
+  // Write combined file(s) at the end.
+  if (exportState.phase !== 'cancelled' && needsAccumulation && exportState.accumulated.length > 0) {
+    await writeCombinedOutput();
+  }
+
+  if (exportState.phase !== 'cancelled') {
+    exportState.phase = 'complete';
+  }
+
+  await saveStateToStorage();
+  broadcastProgress();
+}
+
+async function handleRetryFailed() {
+  if (exportState.failed.length === 0) {
+    return { ok: false, error: 'No failed conversations to retry.' };
+  }
+
+  const retryIds = exportState.failed.map((f) => f.id);
+  exportState.chatIds = retryIds;
+  exportState.currentIndex = 0;
+  exportState.failed = [];
+  exportState.accumulated = [];
+  exportState.phase = 'running';
+  exportState.startTime = new Date().toISOString();
+
+  await saveStateToStorage();
+  broadcastProgress();
+
+  runExport().catch((err) => {
+    console.error('[Threadkeeper] Retry loop crashed:', err);
+    exportState.phase = 'cancelled';
+    broadcastProgress();
+  });
+
+  return { ok: true };
+}
+
+
+// --- Content script ready handshake ---
+// When background navigates a tab to a new conversation, the page reloads and
+// a new content script injects. That script sends CONTENT_READY with its chatId
+// (from URL). We register a one-shot listener that only resolves when the
+// chatId matches the expected navigation target — stale signals from previous
+// navigations are ignored.
+
+function waitForContentReady(tabId, expectedChatId, timeout) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      browser.runtime.onMessage.removeListener(onReady);
+      reject(new Error(`Content script did not load in time for chat ${expectedChatId}`));
+    }, timeout);
+
+    function onReady(message, sender) {
+      if (message.type !== 'CONTENT_READY') return;
+      if (sender.tab?.id !== tabId) return;
+      if (message.chatId !== expectedChatId) return;
+      clearTimeout(timer);
+      browser.runtime.onMessage.removeListener(onReady);
+      resolve();
+    }
+
+    browser.runtime.onMessage.addListener(onReady);
+  });
+}
+
+
+// --- Download helpers ---
+
+async function downloadFile(content, mimeType, filename) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
 
@@ -85,8 +338,6 @@ async function handleExportCurrent(format) {
     saveAs: false,
   });
 
-  // Revoke the object URL once the download finishes (or fails/is canceled)
-  // to free memory. Uses a one-shot listener scoped to this download ID.
   function onChanged(delta) {
     if (delta.id !== downloadId) return;
     if (delta.state?.current === 'complete' || delta.state?.current === 'interrupted') {
@@ -95,6 +346,76 @@ async function handleExportCurrent(format) {
     }
   }
   browser.downloads.onChanged.addListener(onChanged);
+}
 
-  return { ok: true };
+async function downloadConversation(data, format) {
+  const date = new Date(data.exportedAt);
+  if (format === 'markdown' || format === 'both') {
+    await downloadFile(toMarkdown(data), 'text/markdown', safeFilename(data.title, date, 'md'));
+  }
+  if (format === 'json' || format === 'both') {
+    await downloadFile(toJSON(data), 'application/json', safeFilename(data.title, date, 'json'));
+  }
+}
+
+async function writeCombinedOutput() {
+  const { accumulated, format } = exportState;
+  const now = new Date();
+  const slug = `threadkeeper-bulk-export-${accumulated.length}-conversations`;
+
+  if (format === 'markdown' || format === 'both') {
+    await downloadFile(toCombinedMarkdown(accumulated), 'text/markdown', safeFilename(slug, now, 'md'));
+  }
+  if (format === 'json' || format === 'both') {
+    await downloadFile(toCombinedJSON(accumulated), 'application/json', safeFilename(slug, now, 'json'));
+  }
+}
+
+
+// --- State helpers ---
+
+function getExportStateSummary() {
+  const { phase, format, outputMode, chatIds, currentIndex, currentTitle,
+          completed, failed, startTime } = exportState;
+  return {
+    phase,
+    format,
+    outputMode,
+    total: chatIds.length,
+    currentIndex,
+    currentTitle,
+    completedCount: completed.length,
+    failedCount: failed.length,
+    failed,
+    startTime,
+  };
+}
+
+async function getBulkDelay() {
+  const stored = await browser.storage.local.get('bulkDelay');
+  const delay = parseInt(stored.bulkDelay, 10);
+  return Number.isFinite(delay) && delay >= 0 ? delay : 500;
+}
+
+async function saveStateToStorage() {
+  // Persist everything except accumulated (too large for storage).
+  const { phase, format, outputMode, chatIds, currentIndex,
+          completed, failed, startTime } = exportState;
+  await browser.storage.local.set({
+    exportState: { phase, format, outputMode, chatIds, currentIndex,
+                   completed, failed, startTime },
+  });
+}
+
+function broadcastProgress() {
+  browser.runtime.sendMessage({
+    type: 'EXPORT_PROGRESS',
+    state: getExportStateSummary(),
+  }).catch(() => {
+    // No listener connected (export page not open) — ignore.
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

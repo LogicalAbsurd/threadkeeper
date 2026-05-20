@@ -4,21 +4,43 @@
 'use strict';
 
 // ============================================================================
-// Message protocol between popup, background, and content scripts.
+// Message protocol — popup, export page, background, content scripts.
 //
-// Popup → Background:
-//   { type: 'EXPORT_CURRENT', format: 'markdown' | 'json' }
+// --- Popup / Export page → Background ---
+//   { type: 'EXPORT_CURRENT', format }
+//     → { ok: true } | { ok: false, error }
 //
-// Background → Content script:
+//   { type: 'LIST_CONVERSATIONS', tabId }
+//     → { ok: true, data: [{id, title, url}] } | { ok: false, error }
+//     Background forwards to the content script on the given tab.
+//
+//   { type: 'START_BULK_EXPORT', tabId, chatIds, format, outputMode }
+//     format: 'markdown' | 'json' | 'both'
+//     outputMode: 'individual' | 'combined' | 'both'
+//     → { ok: true } | { ok: false, error }
+//
+//   { type: 'PAUSE_EXPORT' }   → { ok: true }
+//   { type: 'RESUME_EXPORT' }  → { ok: true }
+//   { type: 'CANCEL_EXPORT' }  → { ok: true }
+//   { type: 'RETRY_FAILED' }   → { ok: true }
+//   { type: 'GET_EXPORT_STATE' } → exportState summary object
+//
+// --- Background → Content script ---
 //   { type: 'PARSE_CURRENT' }
+//     → { ok, data: { title, site, url, exportedAt, messages } }
 //
-// Content script → Background (response):
-//   { ok: true,  data: { title, site, url, exportedAt, messages } }
-//   { ok: false, error: string }
+//   { type: 'LIST_CONVERSATIONS' }
+//     → { ok, data: [{id, title, url}] }
 //
-// Background → Popup (response):
-//   { ok: true }
-//   { ok: false, error: string }
+// --- Content script → Background (one-way, no response) ---
+//   { type: 'CONTENT_READY', chatId }
+//     Sent at top level on every page load. chatId is extracted from the URL.
+//     Background only acts on this when actively waiting for a specific chatId
+//     during bulk export navigation — stale messages are ignored.
+//
+// --- Background → Export page (broadcast, no response expected) ---
+//   { type: 'EXPORT_PROGRESS', state: exportStateSummary }
+//     Sent after each conversation completes and on phase changes.
 //
 // The normalized message shape inside data.messages:
 //   { role: 'user' | 'assistant', content: string, timestamp?: string }

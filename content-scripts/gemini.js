@@ -132,43 +132,142 @@ async function parseMessages() {
 }
 
 
-// --- Stubs for Phase 4 (bulk/selective export) ---
+// --- List all conversations from the sidebar ---
 
-// eslint-disable-next-line no-unused-vars
-function listConversations() {
-  return Promise.resolve([]);
+async function listConversations() {
+  // Ensure sidebar is visible — Gemini hides it behind a hamburger on small viewports.
+  // MEDIUM stability: aria-label is more stable than class names.
+  const hamburger = document.querySelector(
+    'button[aria-label="Main menu"], button[aria-label="Open sidebar"]'
+  );
+  if (hamburger) {
+    const nav = document.querySelector('nav, [data-test-id="sidebar"]');
+    if (!nav || getComputedStyle(nav).display === 'none') {
+      hamburger.click();
+      await sleep(400);
+    }
+  }
+
+  // Find the sidebar scroll container.
+  // MEDIUM stability: data-test-id and custom elements.
+  const sidebarScroller =
+    document.querySelector('[data-test-id="sidebar-scroller"]') ||
+    document.querySelector('nav infinite-scroller') ||
+    document.querySelector('infinite-scroller');
+
+  if (!sidebarScroller) return [];
+
+  // Scroll sidebar to bottom to lazy-load all conversation entries.
+  // Same stability-polling pattern as ensureAllMessagesLoaded().
+  const POLL_INTERVAL = 200;
+  const STABLE_THRESHOLD = 3;
+  const MAX_WAIT = 15000;
+
+  let stableCount = 0;
+  let lastCount = -1;
+  let elapsed = 0;
+
+  while (stableCount < STABLE_THRESHOLD && elapsed < MAX_WAIT) {
+    sidebarScroller.scrollTop = sidebarScroller.scrollHeight;
+    await sleep(POLL_INTERVAL);
+    elapsed += POLL_INTERVAL;
+
+    // HIGH stability: data-test-id="conversation" is a Google test infra attribute.
+    const current = sidebarScroller.querySelectorAll('a[data-test-id="conversation"]').length;
+    if (current === lastCount) {
+      stableCount++;
+    } else {
+      stableCount = 0;
+      lastCount = current;
+    }
+  }
+
+  if (elapsed >= MAX_WAIT) {
+    console.warn(
+      `[Threadkeeper] Sidebar scroll timeout — may have missed older conversations. ` +
+      `Found ${lastCount} so far.`
+    );
+  }
+
+  const links = sidebarScroller.querySelectorAll('a[data-test-id="conversation"]');
+  const conversations = [];
+
+  for (const link of links) {
+    const href = link.getAttribute('href') || '';
+    const id = href.split('/').pop();
+    if (!id) continue;
+
+    // MEDIUM stability: .conversation-title is a semantically named class.
+    const titleEl =
+      link.querySelector('.conversation-title') ||
+      link.querySelector('[data-test-id="conversation-title"]') ||
+      link;
+    const title = titleEl.textContent.trim() || `Conversation ${id}`;
+
+    conversations.push({
+      id,
+      title,
+      url: `https://gemini.google.com${href.startsWith('/') ? '' : '/'}${href}`,
+    });
+  }
+
+  return conversations;
 }
 
+// Stub — background owns all navigation via browser.tabs.update().
+// Content script does not navigate directly. Kept as a documented no-op
+// to satisfy the site abstraction interface; may be removed in a later phase.
 // eslint-disable-next-line no-unused-vars
 function loadConversation(_id) {
-  return Promise.reject(new Error('Not implemented — Phase 4'));
+  return Promise.resolve();
 }
 
 
 // --- Message listener ---
 
 browser.runtime.onMessage.addListener((message) => {
-  if (message.type !== 'PARSE_CURRENT') return;
+  if (message.type === 'PARSE_CURRENT') {
+    return (async () => {
+      try {
+        const messages = await parseMessages();
+        const title = getTitle();
+        return {
+          ok: true,
+          data: {
+            site: 'gemini',
+            title,
+            url: window.location.href,
+            exportedAt: new Date().toISOString(),
+            messages,
+          },
+        };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    })();
+  }
 
-  // Return a Promise for async response. Supported in both Chrome MV3
-  // and Firefox Gecko 115+ (our floor version).
-  return (async () => {
-    try {
-      const messages = await parseMessages();
-      const title = getTitle();
-
-      return {
-        ok: true,
-        data: {
-          site: 'gemini',
-          title,
-          url: window.location.href,
-          exportedAt: new Date().toISOString(),
-          messages,
-        },
-      };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  })();
+  if (message.type === 'LIST_CONVERSATIONS') {
+    return (async () => {
+      try {
+        const data = await listConversations();
+        return { ok: true, data };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    })();
+  }
 });
+
+
+// --- CONTENT_READY signal ---
+// Sent at top level on every page load so the background knows this content
+// script instance is alive and ready. Includes chatId (from URL) so background
+// can match it to the navigation target it's waiting on during bulk export —
+// stale signals from previous navigations are ignored.
+try {
+  const chatId = window.location.pathname.split('/').pop() || '';
+  browser.runtime.sendMessage({ type: 'CONTENT_READY', chatId });
+} catch (_) {
+  // Extension context invalidated (e.g., extension reloaded mid-session).
+}
