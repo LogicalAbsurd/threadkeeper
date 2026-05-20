@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Chat Archiver",
+  "name": "Threadkeeper",
   "version": "0.1.0",
-  "description": "Export AI chat conversations to Markdown or JSON.",
+  "description": "Export your AI chat conversations to Markdown or JSON. Your data, your disk, your archive.",
 
   "permissions": [
     "downloads",
@@ -19,7 +19,7 @@
 
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Chat Archiver"
+    "default_title": "Threadkeeper"
   },
 
   "background": {

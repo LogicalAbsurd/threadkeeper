@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Chris (LogicalAbsurd)
+
 'use strict';
 
 const SUPPORTED_SITES = [
@@ -50,12 +53,12 @@ async function init() {
         btn.textContent = 'Exported!';
         setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
       } else {
-        console.error('[Chat Archiver]', response?.error);
+        console.error('[Threadkeeper]', response?.error);
         btn.textContent = 'Export failed';
         setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
       }
     } catch (err) {
-      console.error('[Chat Archiver] sendMessage error:', err);
+      console.error('[Threadkeeper] sendMessage error:', err);
       btn.textContent = 'Export failed';
       setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
     }
@@ -63,11 +66,11 @@ async function init() {
 
   // Stubs — bulk and selective export are Phase 4.
   $('#btn-export-all').addEventListener('click', () => {
-    console.log(`[Chat Archiver] Export all chats as ${getSelectedFormat()} — not yet implemented`);
+    console.log(`[Threadkeeper] Export all chats as ${getSelectedFormat()} — not yet implemented`);
   });
 
   $('#btn-export-select').addEventListener('click', () => {
-    console.log(`[Chat Archiver] Select chats to export as ${getSelectedFormat()} — not yet implemented`);
+    console.log(`[Threadkeeper] Select chats to export as ${getSelectedFormat()} — not yet implemented`);
   });
 
   // --- Settings pane toggle ---

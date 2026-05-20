@@ -1,8 +1,8 @@
-# Chat Archiver — Project Context
+# Threadkeeper — Project Context
 
 ## What this is
 
-A Firefox + Chrome browser extension that exports AI chat conversations from Gemini, ChatGPT, and Claude.ai to Markdown or JSON files on disk.
+Threadkeeper is a Firefox + Chrome browser extension that exports AI chat conversations from Gemini, ChatGPT, and Claude.ai to Markdown or JSON files on disk. Your data, your disk, your archive.
 
 ## Why it exists
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Chris (LogicalAbsurd)
+
 // Cross-browser background script.
 //
 // Chrome MV3: runs as a service worker (background.service_worker).
@@ -31,7 +34,7 @@ if (typeof importScripts === 'function') {
   importScripts('lib/filename.js', 'lib/markdown.js', 'lib/json.js');
 }
 
-console.log('Chat Archiver background loaded');
+console.log('Threadkeeper background loaded');
 
 // --- Message routing ---
 // Registered synchronously at top level so it survives service worker restarts.

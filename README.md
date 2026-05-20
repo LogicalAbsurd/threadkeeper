@@ -1,11 +1,13 @@
-# Chat Archiver
+# Threadkeeper
 
-A Firefox & Chrome extension for exporting AI chat conversations to Markdown or JSON.
+Export your AI chat conversations to Markdown or JSON. Your data, your disk, your archive.
 
-Supports: Google Gemini, ChatGPT, Claude.ai (planned).
+A Firefox & Chrome extension that exports conversations from Google Gemini, ChatGPT, and Claude.ai to local files.
 
 ## Status
+
 Early development. Not yet packaged.
 
 ## License
-MIT (planned)
+
+Licensed under AGPL-3.0-or-later. See [LICENSE](LICENSE).

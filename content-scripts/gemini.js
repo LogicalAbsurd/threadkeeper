@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Chris (LogicalAbsurd)
+
 'use strict';
 
 // Gemini scraper — content script for gemini.google.com.
@@ -69,7 +72,7 @@ async function ensureAllMessagesLoaded() {
 
   if (elapsed >= MAX_WAIT) {
     console.warn(
-      '[Chat Archiver] Scroll stability timeout — some older messages may not have loaded. ' +
+      '[Threadkeeper] Scroll stability timeout — some older messages may not have loaded. ' +
       `Found ${lastMessageCount} message turns in ${MAX_WAIT}ms.`
     );
   }
