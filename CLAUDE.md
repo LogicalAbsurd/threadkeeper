@@ -61,7 +61,7 @@ The normalized data structure these produce is what the markdown/json formatters
 ## Build phases
 
 1. ✅ Scaffold + manifest + skeleton files
-2. ⬜ Popup UI shell (HTML/CSS/JS, no scraping yet)
+2. ✅ Popup UI shell (HTML/CSS/JS, no scraping yet)
 3. ⬜ Gemini scraper — single chat export to MD
 4. ⬜ Gemini scraper — bulk + selective
 5. ⬜ ChatGPT scraper (single → bulk)
