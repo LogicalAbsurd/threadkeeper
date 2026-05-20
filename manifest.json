@@ -23,7 +23,6 @@
   },
 
   "background": {
-    "service_worker": "background/background.js",
     "scripts": ["lib/filename.js", "lib/markdown.js", "lib/json.js", "background/background.js"]
   },
 

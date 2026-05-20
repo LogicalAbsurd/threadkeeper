@@ -18,7 +18,7 @@ The rule: decisions happen in chat with Claude.ai; execution happens here. If yo
 
 ## Architectural decisions already made
 
-- **Manifest V3** (cross-compatible with Chrome and Firefox)
+- **Manifest V3**, Firefox-first. Background uses `scripts` array, not `service_worker`. Chrome compatibility will be handled by a build-step manifest swap in Phase 7.
 - **Plain JavaScript**, no TypeScript, no build step
 - **Three target sites in v1**: Gemini, ChatGPT, Claude.ai
 - **Output formats**: Markdown (primary) and JSON (raw backup); user picks per export
