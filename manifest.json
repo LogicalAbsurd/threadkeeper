@@ -43,7 +43,7 @@
 
   "browser_specific_settings": {
     "gecko": {
-      "id": "[email protected]",
+      "id": "chat-archiver@anaxaletheia",
       "strict_min_version": "115.0"
     }
   }
