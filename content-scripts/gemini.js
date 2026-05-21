@@ -87,22 +87,24 @@ async function ensureAllMessagesLoaded() {
     `scrollTop=${container.scrollTop}, scrollHeight=${container.scrollHeight}, ` +
     `clientHeight=${container.clientHeight}, message count BEFORE=${countBefore}`);
 
-  // Step 3: Iterative scroll-to-top using scrollIntoView on the topmost
-  // user-query element. Previous approach (container.scrollTop = 0) was
-  // defeated by Gemini's framework auto-scrolling back down. scrollIntoView
-  // on an actual element is much harder for the framework to fight.
-  //
-  // Each iteration: find topmost user-query → scrollIntoView → wait for
-  // lazy-load → re-count. If count grew, new older messages were loaded;
-  // loop again with the NEW topmost element. If count unchanged for
-  // STABLE_NEEDED consecutive iterations, we've loaded everything.
-  const MAX_ITERATIONS = 50;
-  const MAX_TIME = 60000;
-  const LOAD_WAIT = 500;
-  const STABLE_NEEDED = 2;
+  // Step 3: Iterative lazy-load loop. Gemini's infinite-scroller uses an
+  // IntersectionObserver on a sentinel above the topmost rendered message.
+  // No single scroll technique reliably fires every batch — but diagnostics
+  // showed three techniques that each trigger ONE batch:
+  //   (a) container.scrollTop = 0
+  //   (b) container.scrollTop = -1000  (overscroll)
+  //   (c) scrollIntoView({block:'end'}) on topmost user-query
+  // We cycle through all three per iteration. If ANY technique triggers new
+  // messages, we restart the next iteration immediately. If a full cycle of
+  // all three produces no growth, we increment a "stuck" counter. Two
+  // consecutive stuck iterations means we've loaded everything.
+  const MAX_ITERATIONS = 100;
+  const MAX_TIME = 120000;
+  const BATCH_WAIT = 800;
+  const STUCK_THRESHOLD = 2;
 
   let iteration = 0;
-  let stableRuns = 0;
+  let stuckRuns = 0;
   let lastCount = document.querySelectorAll('user-query').length;
   const startTime = Date.now();
 
@@ -113,49 +115,64 @@ async function ensureAllMessagesLoaded() {
   while (iteration < MAX_ITERATIONS && (Date.now() - startTime) < MAX_TIME) {
     iteration++;
 
-    // Find the topmost user-query inside the container and scroll it into view.
-    const topmost = container.querySelector('user-query');
-    if (topmost) {
-      topmost.scrollIntoView({ block: 'start', behavior: 'instant' });
-    } else {
-      // No user-query elements yet — wait for hydration.
-      console.log(`[TK-DIAG] scroll loop iteration ${iteration} — ` +
-        `no user-query elements found, waiting`);
-      await sleep(LOAD_WAIT);
-      lastCount = 0;
+    // --- Technique (a): scrollTop = 0 ---
+    container.scrollTop = 0;
+    await sleep(BATCH_WAIT);
+    let currentCount = document.querySelectorAll('user-query').length;
+    console.log(`[TK-DIAG] iteration ${iteration} step (a) scrollTop=0 → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${container.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (a) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
+      continue; // new batch loaded, restart iteration
+    }
+
+    // --- Technique (b): scrollTop = -1000 (overscroll) ---
+    container.scrollTop = -1000;
+    await sleep(BATCH_WAIT);
+    currentCount = document.querySelectorAll('user-query').length;
+    console.log(`[TK-DIAG] iteration ${iteration} step (b) scrollTop=-1000 → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${container.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (b) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
       continue;
     }
 
-    // Wait for potential lazy-load to trigger and render.
-    await sleep(LOAD_WAIT);
-
-    const currentCount = document.querySelectorAll('user-query').length;
-
-    // [DIAG] Per-iteration log: iteration, count before/after, scrollTop.
-    console.log(`[TK-DIAG] scroll loop iteration ${iteration} — ` +
-      `countBefore=${lastCount}, countAfter=${currentCount}, ` +
-      `scrollTop=${container.scrollTop}, elapsed=${Date.now() - startTime}ms`);
-
-    if (currentCount === lastCount) {
-      stableRuns++;
-      if (stableRuns >= STABLE_NEEDED) {
-        console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-          `stable for ${stableRuns} consecutive iterations, exiting loop`);
-        break;
-      }
-    } else {
-      // Count changed — lazy-load added older messages above viewport.
-      console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-        `count changed ${lastCount} → ${currentCount}, resetting stable counter`);
-      stableRuns = 0;
+    // --- Technique (c): topmost user-query scrollIntoView block:'end' ---
+    const topmost = container.querySelector('user-query');
+    if (topmost) {
+      topmost.scrollIntoView({ block: 'end', behavior: 'instant' });
+    }
+    await sleep(BATCH_WAIT);
+    currentCount = document.querySelectorAll('user-query').length;
+    console.log(`[TK-DIAG] iteration ${iteration} step (c) scrollIntoView end → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${container.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (c) triggered batch: ${lastCount} → ${currentCount}`);
       lastCount = currentCount;
+      stuckRuns = 0;
+      continue;
+    }
+
+    // All three techniques failed to grow the count this iteration.
+    stuckRuns++;
+    console.log(`[TK-DIAG] iteration ${iteration} — no growth, ` +
+      `stuckRuns=${stuckRuns}/${STUCK_THRESHOLD}`);
+    if (stuckRuns >= STUCK_THRESHOLD) {
+      console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+        `stuck for ${stuckRuns} consecutive iterations, all messages loaded`);
+      break;
     }
   }
 
   // [DIAG] Log exit reason and final state.
   const totalElapsed = Date.now() - startTime;
   const countAfter = document.querySelectorAll('user-query, model-response').length;
-  const reason = iteration >= MAX_ITERATIONS ? 'MAX_ITERATIONS' :
+  const reason = stuckRuns >= STUCK_THRESHOLD ? 'STABLE' :
+    iteration >= MAX_ITERATIONS ? 'MAX_ITERATIONS' :
     totalElapsed >= MAX_TIME ? 'TIMEOUT' : 'STABLE';
 
   console.log(`[TK-DIAG] ensureAllMessagesLoaded done — ` +
