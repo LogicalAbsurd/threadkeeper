@@ -149,8 +149,11 @@ async function listConversations() {
   }
 
   // Find the sidebar scroll container.
-  // MEDIUM stability: data-test-id and custom elements.
+  // HIGH stability: <conversations-list data-test-id="all-conversations"> is an
+  // Angular component wrapping all sidebar entries.
+  // Fallbacks: nav-based selectors for older layouts.
   const sidebarScroller =
+    document.querySelector('[data-test-id="all-conversations"]') ||
     document.querySelector('[data-test-id="sidebar-scroller"]') ||
     document.querySelector('nav infinite-scroller') ||
     document.querySelector('infinite-scroller');
@@ -173,7 +176,9 @@ async function listConversations() {
     elapsed += POLL_INTERVAL;
 
     // HIGH stability: data-test-id="conversation" is a Google test infra attribute.
-    const current = sidebarScroller.querySelectorAll('a[data-test-id="conversation"]').length;
+    // The element is <gem-nav-list-item> (Angular component name, HIGH stability),
+    // NOT an <a> tag — the <a> is a child used only for URL extraction.
+    const current = sidebarScroller.querySelectorAll('[data-test-id="conversation"]').length;
     if (current === lastCount) {
       stableCount++;
     } else {
@@ -189,26 +194,27 @@ async function listConversations() {
     );
   }
 
-  const links = sidebarScroller.querySelectorAll('a[data-test-id="conversation"]');
+  // HIGH stability: data-test-id="conversation" on <gem-nav-list-item> elements.
+  const items = sidebarScroller.querySelectorAll('[data-test-id="conversation"]');
   const conversations = [];
 
-  for (const link of links) {
-    const href = link.getAttribute('href') || '';
+  for (const item of items) {
+    // URL lives on a child <a>, not on the custom element itself.
+    const anchor = item.querySelector('a');
+    const href = anchor?.getAttribute('href') || '';
     const id = href.split('/').pop();
     if (!id) continue;
 
-    // MEDIUM stability: .conversation-title is a semantically named class.
-    const titleEl =
-      link.querySelector('.conversation-title') ||
-      link.querySelector('[data-test-id="conversation-title"]') ||
-      link;
-    const title = titleEl.textContent.trim() || `Conversation ${id}`;
+    // Title is the visible text of the list item. No dedicated .conversation-title
+    // class exists in current DOM — innerText of the element is the title.
+    // Cap at 200 chars to avoid accidentally grabbing extra text from child nodes.
+    let title = (item.innerText || '').trim();
+    if (title.length > 200) title = title.slice(0, 197) + '...';
+    if (!title) title = `Conversation ${id}`;
 
-    conversations.push({
-      id,
-      title,
-      url: `https://gemini.google.com${href.startsWith('/') ? '' : '/'}${href}`,
-    });
+    const fullUrl = anchor?.href || `https://gemini.google.com/app/${id}`;
+
+    conversations.push({ id, title, url: fullUrl });
   }
 
   return conversations;
@@ -258,6 +264,20 @@ browser.runtime.onMessage.addListener((message) => {
     })();
   }
 });
+
+
+// --- DevTools smoke-check ---
+// Paste this in the browser console on gemini.google.com to verify selectors
+// before reloading the extension:
+//
+//   const container = document.querySelector('[data-test-id="all-conversations"]');
+//   const items = container?.querySelectorAll('[data-test-id="conversation"]') || [];
+//   console.log(`Found ${items.length} conversations in sidebar`);
+//   for (const el of [...items].slice(0, 5)) {
+//     const a = el.querySelector('a');
+//     const title = (el.innerText || '').trim().slice(0, 80);
+//     console.log(`  [${el.tagName.toLowerCase()}] "${title}" → ${a?.href || '(no link)'}`);
+//   }
 
 
 // --- CONTENT_READY signal ---
