@@ -256,6 +256,111 @@ async function parseMessages() {
 }
 
 
+// --- Scroll sidebar until all conversations are lazy-loaded ---
+
+async function ensureAllConversationsLoaded(sidebar) {
+  // Gemini's sidebar uses the same infinite-scroller lazy-load pattern as
+  // chat history, but scrolling DOWN loads older conversations. Three
+  // techniques each trigger one batch (confirmed via diagnostics):
+  //   (a) sidebar.scrollTop = sidebar.scrollHeight
+  //   (b) sidebar.scrollTop = sidebar.scrollHeight + 1000  (overscroll)
+  //   (c) scrollIntoView({block:'start'}) on the last conversation element
+  // Cycle all three per iteration. Two consecutive stuck iterations = done.
+  const MAX_ITERATIONS = 100;
+  const MAX_TIME = 120000;
+  const BATCH_WAIT = 800;
+  const STUCK_THRESHOLD = 2;
+
+  const countConvos = () =>
+    document.querySelectorAll('[data-test-id="conversation"]').length;
+
+  let iteration = 0;
+  let stuckRuns = 0;
+  let lastCount = countConvos();
+  const startTime = Date.now();
+
+  // [DIAG] Log scroll loop start.
+  console.log(`[TK-DIAG] ensureAllConversationsLoaded — starting scroll loop, ` +
+    `initial conversation count=${lastCount}, scrollTop=${sidebar.scrollTop}, ` +
+    `scrollHeight=${sidebar.scrollHeight}, clientHeight=${sidebar.clientHeight}`);
+
+  while (iteration < MAX_ITERATIONS && (Date.now() - startTime) < MAX_TIME) {
+    iteration++;
+
+    // --- Technique (a): scrollTop = scrollHeight ---
+    sidebar.scrollTop = sidebar.scrollHeight;
+    await sleep(BATCH_WAIT);
+    let currentCount = countConvos();
+    console.log(`[TK-DIAG] iteration ${iteration} step (a) scrollTop=scrollHeight → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${sidebar.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (a) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
+      continue;
+    }
+
+    // --- Technique (b): scrollTop = scrollHeight + 1000 (overscroll) ---
+    sidebar.scrollTop = sidebar.scrollHeight + 1000;
+    await sleep(BATCH_WAIT);
+    currentCount = countConvos();
+    console.log(`[TK-DIAG] iteration ${iteration} step (b) scrollTop=scrollHeight+1000 → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${sidebar.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (b) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
+      continue;
+    }
+
+    // --- Technique (c): last conversation scrollIntoView block:'start' ---
+    const allConvos = document.querySelectorAll('[data-test-id="conversation"]');
+    const last = allConvos[allConvos.length - 1];
+    if (last) {
+      last.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+    await sleep(BATCH_WAIT);
+    currentCount = countConvos();
+    console.log(`[TK-DIAG] iteration ${iteration} step (c) scrollIntoView start → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${sidebar.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (c) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
+      continue;
+    }
+
+    // All three techniques failed to grow the count this iteration.
+    stuckRuns++;
+    console.log(`[TK-DIAG] iteration ${iteration} — no growth, ` +
+      `stuckRuns=${stuckRuns}/${STUCK_THRESHOLD}`);
+    if (stuckRuns >= STUCK_THRESHOLD) {
+      console.log(`[TK-DIAG] ensureAllConversationsLoaded — ` +
+        `stuck for ${stuckRuns} consecutive iterations, all conversations loaded`);
+      break;
+    }
+  }
+
+  // [DIAG] Log exit reason and final state.
+  const totalElapsed = Date.now() - startTime;
+  const finalCount = countConvos();
+  const reason = stuckRuns >= STUCK_THRESHOLD ? 'STABLE' :
+    iteration >= MAX_ITERATIONS ? 'MAX_ITERATIONS' :
+    totalElapsed >= MAX_TIME ? 'TIMEOUT' : 'STABLE';
+
+  console.log(`[TK-DIAG] ensureAllConversationsLoaded done — ` +
+    `reason=${reason}, iterations=${iteration}, finalCount=${finalCount}, ` +
+    `elapsed=${totalElapsed}ms`);
+
+  if (reason !== 'STABLE') {
+    console.warn(
+      `[Threadkeeper] Sidebar scroll ${reason.toLowerCase()} — may have missed older conversations. ` +
+      `Found ${finalCount} conversations in ${totalElapsed}ms after ${iteration} iterations.`
+    );
+  }
+}
+
+
 // --- List all conversations from the sidebar ---
 
 async function listConversations() {
@@ -272,54 +377,29 @@ async function listConversations() {
     }
   }
 
-  // Find the sidebar scroll container.
-  // HIGH stability: <conversations-list data-test-id="all-conversations"> is an
-  // Angular component wrapping all sidebar entries.
-  // Fallbacks: nav-based selectors for older layouts.
+  // Find the sidebar infinite-scroller. There are TWO infinite-scrollers on
+  // the page — one for chat history (data-test-id="chat-history-container")
+  // and one for the sidebar conversation list (the one WITHOUT that test-id).
+  // We want the sidebar one.
   const sidebarScroller =
+    [...document.querySelectorAll('infinite-scroller')]
+      .find(el => el.getAttribute('data-test-id') !== 'chat-history-container') ||
     document.querySelector('[data-test-id="all-conversations"]') ||
-    document.querySelector('[data-test-id="sidebar-scroller"]') ||
-    document.querySelector('nav infinite-scroller') ||
-    document.querySelector('infinite-scroller');
+    document.querySelector('[data-test-id="sidebar-scroller"]');
 
-  if (!sidebarScroller) return [];
-
-  // Scroll sidebar to bottom to lazy-load all conversation entries.
-  // Same stability-polling pattern as ensureAllMessagesLoaded().
-  const POLL_INTERVAL = 200;
-  const STABLE_THRESHOLD = 3;
-  const MAX_WAIT = 15000;
-
-  let stableCount = 0;
-  let lastCount = -1;
-  let elapsed = 0;
-
-  while (stableCount < STABLE_THRESHOLD && elapsed < MAX_WAIT) {
-    sidebarScroller.scrollTop = sidebarScroller.scrollHeight;
-    await sleep(POLL_INTERVAL);
-    elapsed += POLL_INTERVAL;
-
-    // HIGH stability: data-test-id="conversation" is a Google test infra attribute.
-    // The element is <gem-nav-list-item> (Angular component name, HIGH stability),
-    // NOT an <a> tag — the <a> is a child used only for URL extraction.
-    const current = sidebarScroller.querySelectorAll('[data-test-id="conversation"]').length;
-    if (current === lastCount) {
-      stableCount++;
-    } else {
-      stableCount = 0;
-      lastCount = current;
-    }
+  if (!sidebarScroller) {
+    console.error(`[TK-DIAG] listConversations — no sidebar scroller found`);
+    return [];
   }
 
-  if (elapsed >= MAX_WAIT) {
-    console.warn(
-      `[Threadkeeper] Sidebar scroll timeout — may have missed older conversations. ` +
-      `Found ${lastCount} so far.`
-    );
-  }
+  console.log(`[TK-DIAG] listConversations — sidebar scroller found: ` +
+    `<${sidebarScroller.tagName.toLowerCase()}> data-test-id="${sidebarScroller.getAttribute('data-test-id') || '(none)'}"`);
+
+  // Scroll sidebar until all conversations are lazy-loaded.
+  await ensureAllConversationsLoaded(sidebarScroller);
 
   // HIGH stability: data-test-id="conversation" on <gem-nav-list-item> elements.
-  const items = sidebarScroller.querySelectorAll('[data-test-id="conversation"]');
+  const items = document.querySelectorAll('[data-test-id="conversation"]');
   const conversations = [];
 
   for (const item of items) {
@@ -341,6 +421,7 @@ async function listConversations() {
     conversations.push({ id, title, url: fullUrl });
   }
 
+  console.log(`[TK-DIAG] listConversations — returning ${conversations.length} conversations`);
   return conversations;
 }
 
