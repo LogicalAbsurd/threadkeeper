@@ -77,91 +77,101 @@ async function ensureAllMessagesLoaded() {
     return;
   }
 
-  // Step 2: Scroll to top, then poll for lazy-loaded messages.
-  // Gemini preserves scroll position on SPA navigation. We must scroll to 0
-  // to trigger lazy-load of older messages, then keep scrolling back to 0
-  // each time new messages appear (lazy-load inserts above the viewport).
+  // Step 2: Brief pause for initial render, then scroll-to-top loop.
+  await sleep(500);
+
   const countBefore = document.querySelectorAll('user-query, model-response').length;
-  const scrollTopBefore = container.scrollTop;
 
   // [DIAG] Log pre-scroll state.
   console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-    `scrollTop BEFORE=${scrollTopBefore}, scrollHeight=${container.scrollHeight}, ` +
+    `scrollTop=${container.scrollTop}, scrollHeight=${container.scrollHeight}, ` +
     `clientHeight=${container.clientHeight}, message count BEFORE=${countBefore}`);
 
-  container.scrollTop = 0;
+  // Step 3: Iterative scroll-to-top using scrollIntoView on the topmost
+  // user-query element. Previous approach (container.scrollTop = 0) was
+  // defeated by Gemini's framework auto-scrolling back down. scrollIntoView
+  // on an actual element is much harder for the framework to fight.
+  //
+  // Each iteration: find topmost user-query → scrollIntoView → wait for
+  // lazy-load → re-count. If count grew, new older messages were loaded;
+  // loop again with the NEW topmost element. If count unchanged for
+  // STABLE_NEEDED consecutive iterations, we've loaded everything.
+  const MAX_ITERATIONS = 50;
+  const MAX_TIME = 60000;
+  const LOAD_WAIT = 500;
+  const STABLE_NEEDED = 2;
 
-  await sleep(100);
-  const scrollTopAfterInitial = container.scrollTop;
-  // [DIAG] Log whether initial scroll took effect.
-  console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-    `scrollTop AFTER set to 0 (100ms later)=${scrollTopAfterInitial}, ` +
-    `did scroll=${scrollTopBefore !== scrollTopAfterInitial}`);
+  let iteration = 0;
+  let stableRuns = 0;
+  let lastCount = document.querySelectorAll('user-query').length;
+  const startTime = Date.now();
 
-  // Three-phase polling:
-  //   Phase 1 — wait for at least 1 message element (SPA hydration).
-  //   Phase 2 — scroll to top, wait for count to stabilise across 3 polls.
-  //             If count changes, re-scroll to 0 (lazy-load added older messages
-  //             above the viewport) and restart the stable countdown.
-  //   Phase 3 — stable for 750ms with count > 0: done.
-  const INITIAL_WAIT = 300;
-  const POLL_INTERVAL = 250;
-  const STABLE_THRESHOLD = 3;
-  const MAX_WAIT = 30000;
+  // [DIAG] Log scroll loop start.
+  console.log(`[TK-DIAG] ensureAllMessagesLoaded — starting scroll loop, ` +
+    `initial user-query count=${lastCount}, scrollTop=${container.scrollTop}`);
 
-  await sleep(INITIAL_WAIT);
-  let elapsed = INITIAL_WAIT;
+  while (iteration < MAX_ITERATIONS && (Date.now() - startTime) < MAX_TIME) {
+    iteration++;
 
-  let stableCount = 0;
-  let lastMessageCount = -1;
-
-  while (stableCount < STABLE_THRESHOLD && elapsed < MAX_WAIT) {
-    await sleep(POLL_INTERVAL);
-    elapsed += POLL_INTERVAL;
-
-    const current = document.querySelectorAll('user-query, model-response').length;
-    // [DIAG] Log each stability poll.
-    console.log(`[TK-DIAG] ensureAllMessagesLoaded poll — ` +
-      `elapsed=${elapsed}ms, count=${current}, lastCount=${lastMessageCount}, ` +
-      `stable=${stableCount}/${STABLE_THRESHOLD}, scrollTop=${container.scrollTop}`);
-
-    // Phase 1: no messages yet — keep waiting, don't start the stable countdown.
-    if (current === 0) {
-      stableCount = 0;
-      lastMessageCount = 0;
+    // Find the topmost user-query inside the container and scroll it into view.
+    const topmost = container.querySelector('user-query');
+    if (topmost) {
+      topmost.scrollIntoView({ block: 'start', behavior: 'instant' });
+    } else {
+      // No user-query elements yet — wait for hydration.
+      console.log(`[TK-DIAG] scroll loop iteration ${iteration} — ` +
+        `no user-query elements found, waiting`);
+      await sleep(LOAD_WAIT);
+      lastCount = 0;
       continue;
     }
 
-    // Phase 2: messages exist — run the stability check.
-    if (current === lastMessageCount) {
-      stableCount++;
+    // Wait for potential lazy-load to trigger and render.
+    await sleep(LOAD_WAIT);
+
+    const currentCount = document.querySelectorAll('user-query').length;
+
+    // [DIAG] Per-iteration log: iteration, count before/after, scrollTop.
+    console.log(`[TK-DIAG] scroll loop iteration ${iteration} — ` +
+      `countBefore=${lastCount}, countAfter=${currentCount}, ` +
+      `scrollTop=${container.scrollTop}, elapsed=${Date.now() - startTime}ms`);
+
+    if (currentCount === lastCount) {
+      stableRuns++;
+      if (stableRuns >= STABLE_NEEDED) {
+        console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+          `stable for ${stableRuns} consecutive iterations, exiting loop`);
+        break;
+      }
     } else {
-      // Count changed — lazy-load likely added older messages above viewport.
-      // Re-scroll to top so the next batch loads too.
-      container.scrollTop = 0;
-      // [DIAG]
+      // Count changed — lazy-load added older messages above viewport.
       console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-        `count changed ${lastMessageCount} → ${current}, re-scrolling to top`);
-      stableCount = 0;
-      lastMessageCount = current;
+        `count changed ${lastCount} → ${currentCount}, resetting stable counter`);
+      stableRuns = 0;
+      lastCount = currentCount;
     }
   }
 
-  // [DIAG] Log exit reason and whether lazy-load changed the count.
+  // [DIAG] Log exit reason and final state.
+  const totalElapsed = Date.now() - startTime;
   const countAfter = document.querySelectorAll('user-query, model-response').length;
-  const reason = elapsed >= MAX_WAIT ? 'TIMEOUT' : 'STABLE';
+  const reason = iteration >= MAX_ITERATIONS ? 'MAX_ITERATIONS' :
+    totalElapsed >= MAX_TIME ? 'TIMEOUT' : 'STABLE';
+
   console.log(`[TK-DIAG] ensureAllMessagesLoaded done — ` +
-    `reason=${reason}, finalCount=${lastMessageCount}, elapsed=${elapsed}ms`);
+    `reason=${reason}, iterations=${iteration}, finalCount=${countAfter}, ` +
+    `elapsed=${totalElapsed}ms`);
+
   if (countAfter !== countBefore) {
     console.log(`[TK-DIAG] lazy-load triggered, count went from ${countBefore} to ${countAfter}`);
   } else {
     console.log(`[TK-DIAG] no lazy-load detected, count stayed at ${countAfter}`);
   }
 
-  if (elapsed >= MAX_WAIT) {
+  if (reason !== 'STABLE') {
     console.warn(
-      '[Threadkeeper] Scroll stability timeout — some older messages may not have loaded. ' +
-      `Found ${lastMessageCount} message turns in ${MAX_WAIT}ms.`
+      `[Threadkeeper] Scroll ${reason.toLowerCase()} — some older messages may not have loaded. ` +
+      `Found ${countAfter} message turns in ${totalElapsed}ms after ${iteration} iterations.`
     );
   }
 }
