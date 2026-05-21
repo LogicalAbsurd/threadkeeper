@@ -37,15 +37,45 @@ function getTitle() {
 async function ensureAllMessagesLoaded() {
   // Scroll container selector cascade, ordered by stability.
   // HIGH: data-test-id. MEDIUM: custom elements. LOW: class names.
-  const container =
-    document.querySelector('[data-test-id="chat-history-container"]') ||
-    document.querySelector('infinite-scroller') ||
-    document.querySelector('.chat-scrollable-container') ||
-    document.scrollingElement;
+  const selectors = [
+    '[data-test-id="chat-history-container"]',
+    'infinite-scroller',
+    '.chat-scrollable-container',
+  ];
+  let container = null;
+  let matchedSelector = '(none)';
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) { container = el; matchedSelector = sel; break; }
+  }
+  if (!container) {
+    container = document.scrollingElement;
+    matchedSelector = 'document.scrollingElement (fallback)';
+  }
 
-  if (!container) return;
+  if (!container) {
+    // [DIAG]
+    console.log('[TK-DIAG] ensureAllMessagesLoaded — no scroll container found at all');
+    return;
+  }
+
+  const countBefore = document.querySelectorAll('user-query, model-response').length;
+  const scrollTopBefore = container.scrollTop;
+  // [DIAG] Log scroll container match and pre-scroll state.
+  console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+    `container="${matchedSelector}", scrollTop BEFORE=${scrollTopBefore}, ` +
+    `scrollHeight=${container.scrollHeight}, clientHeight=${container.clientHeight}, ` +
+    `message count BEFORE scroll=${countBefore}`);
 
   container.scrollTop = 0;
+
+  // Check if scroll actually took effect after a brief yield.
+  await sleep(100);
+  const scrollTopAfter = container.scrollTop;
+  // [DIAG] Log whether scrollTo(0) actually moved the viewport.
+  console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+    `scrollTop AFTER set to 0 (100ms later)=${scrollTopAfter}, ` +
+    `did scroll=${scrollTopBefore !== scrollTopAfter}`);
 
   // Two-phase polling:
   //   Phase 1 — wait for at least 1 message element to appear (SPA hydration).
@@ -88,10 +118,16 @@ async function ensureAllMessagesLoaded() {
     }
   }
 
-  // [DIAG] Log exit reason.
+  // [DIAG] Log exit reason and whether lazy-load changed the count.
+  const countAfter = document.querySelectorAll('user-query, model-response').length;
   const reason = elapsed >= MAX_WAIT ? 'TIMEOUT' : 'STABLE';
   console.log(`[TK-DIAG] ensureAllMessagesLoaded done — ` +
     `reason=${reason}, finalCount=${lastMessageCount}, elapsed=${elapsed}ms`);
+  if (countAfter !== countBefore) {
+    console.log(`[TK-DIAG] lazy-load triggered, count went from ${countBefore} to ${countAfter}`);
+  } else {
+    console.log(`[TK-DIAG] no lazy-load detected, count stayed at ${countAfter}`);
+  }
 
   if (elapsed >= MAX_WAIT) {
     console.warn(
