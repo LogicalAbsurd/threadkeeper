@@ -35,57 +35,79 @@ function getTitle() {
 // --- Scroll to top + stability detector for lazy-loaded messages ---
 
 async function ensureAllMessagesLoaded() {
-  // Scroll container selector cascade, ordered by stability.
-  // HIGH: data-test-id. MEDIUM: custom elements. LOW: class names.
-  const selectors = [
+  // Step 1: Wait for the chat scroll container to appear in the DOM.
+  // After navigation, Angular takes 1-2s to hydrate and render the
+  // <infinite-scroller data-test-id="chat-history-container"> element.
+  // Poll every 100ms, cap at 5s. There are TWO infinite-scrollers in
+  // Gemini's DOM (sidebar + chat) — qualify by data-test-id to avoid
+  // matching the sidebar one.
+  const CONTAINER_POLL = 100;
+  const CONTAINER_MAX = 5000;
+
+  // HIGH stability: data-test-id from Google's test infra on the chat scroller.
+  const containerSelectors = [
     '[data-test-id="chat-history-container"]',
-    'infinite-scroller',
-    '.chat-scrollable-container',
+    'infinite-scroller[data-test-id="chat-history-container"]',
+    '.chat-history',
   ];
+
   let container = null;
   let matchedSelector = '(none)';
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (el) { container = el; matchedSelector = sel; break; }
-  }
-  if (!container) {
-    container = document.scrollingElement;
-    matchedSelector = 'document.scrollingElement (fallback)';
+  let containerElapsed = 0;
+
+  while (!container && containerElapsed < CONTAINER_MAX) {
+    for (const sel of containerSelectors) {
+      const el = document.querySelector(sel);
+      if (el) { container = el; matchedSelector = sel; break; }
+    }
+    if (!container) {
+      await sleep(CONTAINER_POLL);
+      containerElapsed += CONTAINER_POLL;
+    }
   }
 
-  if (!container) {
-    // [DIAG]
-    console.log('[TK-DIAG] ensureAllMessagesLoaded — no scroll container found at all');
+  // [DIAG] Log container discovery result.
+  if (container) {
+    console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+      `container="${matchedSelector}" found after ${containerElapsed}ms`);
+  } else {
+    console.error(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+      `no chat scroll container found after ${CONTAINER_MAX}ms. ` +
+      `Tried: ${containerSelectors.join(', ')}. Aborting scrape.`);
     return;
   }
 
+  // Step 2: Scroll to top, then poll for lazy-loaded messages.
+  // Gemini preserves scroll position on SPA navigation. We must scroll to 0
+  // to trigger lazy-load of older messages, then keep scrolling back to 0
+  // each time new messages appear (lazy-load inserts above the viewport).
   const countBefore = document.querySelectorAll('user-query, model-response').length;
   const scrollTopBefore = container.scrollTop;
-  // [DIAG] Log scroll container match and pre-scroll state.
+
+  // [DIAG] Log pre-scroll state.
   console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-    `container="${matchedSelector}", scrollTop BEFORE=${scrollTopBefore}, ` +
-    `scrollHeight=${container.scrollHeight}, clientHeight=${container.clientHeight}, ` +
-    `message count BEFORE scroll=${countBefore}`);
+    `scrollTop BEFORE=${scrollTopBefore}, scrollHeight=${container.scrollHeight}, ` +
+    `clientHeight=${container.clientHeight}, message count BEFORE=${countBefore}`);
 
   container.scrollTop = 0;
 
-  // Check if scroll actually took effect after a brief yield.
   await sleep(100);
-  const scrollTopAfter = container.scrollTop;
-  // [DIAG] Log whether scrollTo(0) actually moved the viewport.
+  const scrollTopAfterInitial = container.scrollTop;
+  // [DIAG] Log whether initial scroll took effect.
   console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
-    `scrollTop AFTER set to 0 (100ms later)=${scrollTopAfter}, ` +
-    `did scroll=${scrollTopBefore !== scrollTopAfter}`);
+    `scrollTop AFTER set to 0 (100ms later)=${scrollTopAfterInitial}, ` +
+    `did scroll=${scrollTopBefore !== scrollTopAfterInitial}`);
 
-  // Two-phase polling:
-  //   Phase 1 — wait for at least 1 message element to appear (SPA hydration).
-  //   Phase 2 — once messages exist, wait for count to stabilise across 3 polls.
-  // 300ms initial wait gives Gemini's Angular app time to hydrate after
-  // navigation before we start hammering querySelectorAll.
+  // Three-phase polling:
+  //   Phase 1 — wait for at least 1 message element (SPA hydration).
+  //   Phase 2 — scroll to top, wait for count to stabilise across 3 polls.
+  //             If count changes, re-scroll to 0 (lazy-load added older messages
+  //             above the viewport) and restart the stable countdown.
+  //   Phase 3 — stable for 750ms with count > 0: done.
   const INITIAL_WAIT = 300;
   const POLL_INTERVAL = 250;
   const STABLE_THRESHOLD = 3;
-  const MAX_WAIT = 15000;
+  const MAX_WAIT = 30000;
 
   await sleep(INITIAL_WAIT);
   let elapsed = INITIAL_WAIT;
@@ -100,7 +122,8 @@ async function ensureAllMessagesLoaded() {
     const current = document.querySelectorAll('user-query, model-response').length;
     // [DIAG] Log each stability poll.
     console.log(`[TK-DIAG] ensureAllMessagesLoaded poll — ` +
-      `elapsed=${elapsed}ms, count=${current}, lastCount=${lastMessageCount}, stable=${stableCount}/${STABLE_THRESHOLD}`);
+      `elapsed=${elapsed}ms, count=${current}, lastCount=${lastMessageCount}, ` +
+      `stable=${stableCount}/${STABLE_THRESHOLD}, scrollTop=${container.scrollTop}`);
 
     // Phase 1: no messages yet — keep waiting, don't start the stable countdown.
     if (current === 0) {
@@ -109,10 +132,16 @@ async function ensureAllMessagesLoaded() {
       continue;
     }
 
-    // Phase 2: messages exist — run the normal stability check.
+    // Phase 2: messages exist — run the stability check.
     if (current === lastMessageCount) {
       stableCount++;
     } else {
+      // Count changed — lazy-load likely added older messages above viewport.
+      // Re-scroll to top so the next batch loads too.
+      container.scrollTop = 0;
+      // [DIAG]
+      console.log(`[TK-DIAG] ensureAllMessagesLoaded — ` +
+        `count changed ${lastMessageCount} → ${current}, re-scrolling to top`);
       stableCount = 0;
       lastMessageCount = current;
     }
