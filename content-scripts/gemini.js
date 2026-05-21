@@ -260,16 +260,19 @@ async function parseMessages() {
 
 async function ensureAllConversationsLoaded(sidebar) {
   // Gemini's sidebar uses the same infinite-scroller lazy-load pattern as
-  // chat history, but scrolling DOWN loads older conversations. Three
-  // techniques each trigger one batch (confirmed via diagnostics):
+  // chat history, but scrolling DOWN loads older conversations. Five
+  // techniques cycle per iteration (confirmed via diagnostics):
   //   (a) sidebar.scrollTop = sidebar.scrollHeight
   //   (b) sidebar.scrollTop = sidebar.scrollHeight + 1000  (overscroll)
   //   (c) scrollIntoView({block:'start'}) on the last conversation element
-  // Cycle all three per iteration. Sidebar batches are slower than chat —
-  // sometimes 2-3 "empty" iterations between successful loads. Use 4
-  // consecutive stuck iterations as the done signal, BUT only count an
-  // iteration as truly stuck if scrollHeight also stopped changing (meaning
-  // no new DOM content is being appended even asynchronously).
+  //   (d) "wiggle" — scroll UP 200px then back to bottom (generates two
+  //       distinct scroll events, re-engages scroll listeners that ignore
+  //       no-op scrollTop assignments when already at the bottom)
+  //   (e) dispatch synthetic scroll event on the container
+  // Sidebar batches are slower than chat — sometimes 2-3 "empty" iterations
+  // between successful loads. Use 4 consecutive stuck iterations as the done
+  // signal, BUT only count an iteration as truly stuck if scrollHeight also
+  // stopped changing (no new DOM content being appended asynchronously).
   const MAX_ITERATIONS = 100;
   const MAX_TIME = 180000;
   const BATCH_WAIT = 1500;
@@ -338,7 +341,39 @@ async function ensureAllConversationsLoaded(sidebar) {
       continue;
     }
 
-    // All three techniques failed to grow the count this iteration.
+    // --- Technique (d): wiggle — scroll UP 200px then back to bottom ---
+    // When scrollTop is already pinned at the bottom, setting it to the
+    // same value is a no-op (no scroll event fires). Scrolling up first
+    // generates two distinct scroll events and re-engages the listener.
+    const savedTop = sidebar.scrollTop;
+    sidebar.scrollTop = Math.max(0, savedTop - 200);
+    await sleep(300);
+    sidebar.scrollTop = sidebar.scrollHeight;
+    await sleep(BATCH_WAIT);
+    currentCount = countConvos();
+    console.log(`[TK-DIAG] iteration ${iteration} step (d) wiggle → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${sidebar.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (d) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
+      continue;
+    }
+
+    // --- Technique (e): dispatch synthetic scroll event ---
+    sidebar.dispatchEvent(new Event('scroll', { bubbles: true }));
+    await sleep(BATCH_WAIT);
+    currentCount = countConvos();
+    console.log(`[TK-DIAG] iteration ${iteration} step (e) synthetic scroll → ` +
+      `count=${currentCount} (was ${lastCount}), scrollTop=${sidebar.scrollTop}`);
+    if (currentCount > lastCount) {
+      console.log(`[TK-DIAG] technique (e) triggered batch: ${lastCount} → ${currentCount}`);
+      lastCount = currentCount;
+      stuckRuns = 0;
+      continue;
+    }
+
+    // All five techniques failed to grow the count this iteration.
     // Safety net: only count as truly stuck if scrollHeight AND scrollTop
     // are unchanged from the start of this iteration. If either moved, the
     // lazy-loader is still working asynchronously — don't count it.
