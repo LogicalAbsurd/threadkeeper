@@ -218,11 +218,18 @@ async function runExport() {
 
       // Wait for the new content script to signal readiness with matching chatId.
       await waitForContentReady(exportState.tabId, chatId, 15000);
+      // [DIAG] Log post-handshake state.
+      console.log(`[TK-DIAG] runExport — content ready for "${chatId}", sending PARSE_CURRENT`);
 
       // Parse the conversation from the newly loaded page.
       const response = await browser.tabs.sendMessage(exportState.tabId, {
         type: 'PARSE_CURRENT',
       });
+
+      // [DIAG] Log parse result summary.
+      console.log(`[TK-DIAG] runExport — PARSE_CURRENT response for "${chatId}": ` +
+        `ok=${response?.ok}, messages=${response?.data?.messages?.length ?? 'N/A'}, ` +
+        `title="${response?.data?.title ?? 'N/A'}"`);
 
       if (!response?.ok) throw new Error(response?.error || 'Parse failed');
 
@@ -306,14 +313,24 @@ async function handleRetryFailed() {
 // navigations are ignored.
 
 function waitForContentReady(tabId, expectedChatId, timeout) {
+  // [DIAG] Log what we're waiting for.
+  console.log(`[TK-DIAG] waitForContentReady — expecting chatId="${expectedChatId}" on tab ${tabId}`);
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       browser.runtime.onMessage.removeListener(onReady);
+      // [DIAG] Log timeout.
+      console.log(`[TK-DIAG] waitForContentReady TIMEOUT — never got chatId="${expectedChatId}"`);
       reject(new Error(`Content script did not load in time for chat ${expectedChatId}`));
     }, timeout);
 
     function onReady(message, sender) {
       if (message.type !== 'CONTENT_READY') return;
+      // [DIAG] Log every CONTENT_READY we see, even mismatches.
+      console.log(`[TK-DIAG] waitForContentReady received CONTENT_READY — ` +
+        `chatId="${message.chatId}", senderTab=${sender.tab?.id}, ` +
+        `expectedTab=${tabId}, expectedChatId="${expectedChatId}", ` +
+        `match=${sender.tab?.id === tabId && message.chatId === expectedChatId}`);
       if (sender.tab?.id !== tabId) return;
       if (message.chatId !== expectedChatId) return;
       clearTimeout(timer);

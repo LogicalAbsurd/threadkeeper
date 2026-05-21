@@ -47,21 +47,39 @@ async function ensureAllMessagesLoaded() {
 
   container.scrollTop = 0;
 
-  // Poll message count every 200ms. Load is complete when count is unchanged
-  // across 3 consecutive polls (stable for 600ms). Cap total wait at 10s.
-  const POLL_INTERVAL = 200;
+  // Two-phase polling:
+  //   Phase 1 — wait for at least 1 message element to appear (SPA hydration).
+  //   Phase 2 — once messages exist, wait for count to stabilise across 3 polls.
+  // 300ms initial wait gives Gemini's Angular app time to hydrate after
+  // navigation before we start hammering querySelectorAll.
+  const INITIAL_WAIT = 300;
+  const POLL_INTERVAL = 250;
   const STABLE_THRESHOLD = 3;
-  const MAX_WAIT = 10000;
+  const MAX_WAIT = 15000;
+
+  await sleep(INITIAL_WAIT);
+  let elapsed = INITIAL_WAIT;
 
   let stableCount = 0;
   let lastMessageCount = -1;
-  let elapsed = 0;
 
   while (stableCount < STABLE_THRESHOLD && elapsed < MAX_WAIT) {
     await sleep(POLL_INTERVAL);
     elapsed += POLL_INTERVAL;
 
     const current = document.querySelectorAll('user-query, model-response').length;
+    // [DIAG] Log each stability poll.
+    console.log(`[TK-DIAG] ensureAllMessagesLoaded poll — ` +
+      `elapsed=${elapsed}ms, count=${current}, lastCount=${lastMessageCount}, stable=${stableCount}/${STABLE_THRESHOLD}`);
+
+    // Phase 1: no messages yet — keep waiting, don't start the stable countdown.
+    if (current === 0) {
+      stableCount = 0;
+      lastMessageCount = 0;
+      continue;
+    }
+
+    // Phase 2: messages exist — run the normal stability check.
     if (current === lastMessageCount) {
       stableCount++;
     } else {
@@ -69,6 +87,11 @@ async function ensureAllMessagesLoaded() {
       lastMessageCount = current;
     }
   }
+
+  // [DIAG] Log exit reason.
+  const reason = elapsed >= MAX_WAIT ? 'TIMEOUT' : 'STABLE';
+  console.log(`[TK-DIAG] ensureAllMessagesLoaded done — ` +
+    `reason=${reason}, finalCount=${lastMessageCount}, elapsed=${elapsed}ms`);
 
   if (elapsed >= MAX_WAIT) {
     console.warn(
@@ -82,11 +105,20 @@ async function ensureAllMessagesLoaded() {
 // --- Parse messages ---
 
 async function parseMessages() {
+  // [DIAG] Log state BEFORE ensureAllMessagesLoaded.
+  console.log(`[TK-DIAG] parseMessages() called — url="${window.location.href}", ` +
+    `user-query=${document.querySelectorAll('user-query').length}, ` +
+    `model-response=${document.querySelectorAll('model-response').length}`);
+
   await ensureAllMessagesLoaded();
 
   // user-query and model-response are Angular custom elements — HIGH stability.
   // They're part of Gemini's component registration, not styling classes.
   const turns = document.querySelectorAll('user-query, model-response');
+
+  // [DIAG] Log state AFTER ensureAllMessagesLoaded.
+  console.log(`[TK-DIAG] parseMessages() after ensureAllMessagesLoaded — ` +
+    `turns found=${turns.length}, url="${window.location.href}"`);
   const messages = [];
 
   for (const turn of turns) {
@@ -287,6 +319,10 @@ browser.runtime.onMessage.addListener((message) => {
 // stale signals from previous navigations are ignored.
 try {
   const chatId = window.location.pathname.split('/').pop() || '';
+  // [DIAG] Log when CONTENT_READY fires and what URL we're on.
+  console.log(`[TK-DIAG] CONTENT_READY firing — chatId="${chatId}", url="${window.location.href}", ` +
+    `user-query count=${document.querySelectorAll('user-query').length}, ` +
+    `model-response count=${document.querySelectorAll('model-response').length}`);
   browser.runtime.sendMessage({ type: 'CONTENT_READY', chatId });
 } catch (_) {
   // Extension context invalidated (e.g., extension reloaded mid-session).

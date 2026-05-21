@@ -153,9 +153,10 @@ function updateExportBar() {
 
 document.getElementById('filter-input').addEventListener('input', (e) => {
   const query = e.target.value.toLowerCase();
-  for (const item of document.querySelectorAll('.chat-item')) {
-    const label = item.querySelector('label');
-    item.hidden = !label.textContent.toLowerCase().includes(query);
+  const list = document.getElementById('chat-list');
+  for (const item of list.children) {
+    const title = allConversations.find((c) => c.id === item.dataset.id)?.title || '';
+    item.hidden = !title.toLowerCase().includes(query);
   }
 });
 
