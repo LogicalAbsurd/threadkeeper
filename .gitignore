@@ -16,3 +16,4 @@ build/
 # Local stuff
 notes.md
 TODO.local
+tmp/
