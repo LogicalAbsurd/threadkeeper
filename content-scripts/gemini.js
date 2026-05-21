@@ -265,11 +265,15 @@ async function ensureAllConversationsLoaded(sidebar) {
   //   (a) sidebar.scrollTop = sidebar.scrollHeight
   //   (b) sidebar.scrollTop = sidebar.scrollHeight + 1000  (overscroll)
   //   (c) scrollIntoView({block:'start'}) on the last conversation element
-  // Cycle all three per iteration. Two consecutive stuck iterations = done.
+  // Cycle all three per iteration. Sidebar batches are slower than chat —
+  // sometimes 2-3 "empty" iterations between successful loads. Use 4
+  // consecutive stuck iterations as the done signal, BUT only count an
+  // iteration as truly stuck if scrollHeight also stopped changing (meaning
+  // no new DOM content is being appended even asynchronously).
   const MAX_ITERATIONS = 100;
-  const MAX_TIME = 120000;
-  const BATCH_WAIT = 800;
-  const STUCK_THRESHOLD = 2;
+  const MAX_TIME = 180000;
+  const BATCH_WAIT = 1500;
+  const STUCK_THRESHOLD = 4;
 
   const countConvos = () =>
     document.querySelectorAll('[data-test-id="conversation"]').length;
@@ -286,6 +290,10 @@ async function ensureAllConversationsLoaded(sidebar) {
 
   while (iteration < MAX_ITERATIONS && (Date.now() - startTime) < MAX_TIME) {
     iteration++;
+
+    // Snapshot scroll geometry at start of iteration to detect async loading.
+    const scrollHeightBefore = sidebar.scrollHeight;
+    const scrollTopBefore = sidebar.scrollTop;
 
     // --- Technique (a): scrollTop = scrollHeight ---
     sidebar.scrollTop = sidebar.scrollHeight;
@@ -331,9 +339,26 @@ async function ensureAllConversationsLoaded(sidebar) {
     }
 
     // All three techniques failed to grow the count this iteration.
-    stuckRuns++;
-    console.log(`[TK-DIAG] iteration ${iteration} — no growth, ` +
-      `stuckRuns=${stuckRuns}/${STUCK_THRESHOLD}`);
+    // Safety net: only count as truly stuck if scrollHeight AND scrollTop
+    // are unchanged from the start of this iteration. If either moved, the
+    // lazy-loader is still working asynchronously — don't count it.
+    const scrollHeightAfter = sidebar.scrollHeight;
+    const scrollTopAfter = sidebar.scrollTop;
+    const geometryChanged = scrollHeightAfter !== scrollHeightBefore ||
+      scrollTopAfter !== scrollTopBefore;
+
+    if (geometryChanged) {
+      // Scroll geometry moved but count didn't grow yet — load still in progress.
+      console.log(`[TK-DIAG] iteration ${iteration} — no count growth but geometry changed ` +
+        `(scrollHeight ${scrollHeightBefore}→${scrollHeightAfter}, ` +
+        `scrollTop ${scrollTopBefore}→${scrollTopAfter}), not counting as stuck`);
+      // Don't increment stuckRuns, but don't reset it either.
+    } else {
+      stuckRuns++;
+      console.log(`[TK-DIAG] iteration ${iteration} — no growth, geometry unchanged, ` +
+        `stuckRuns=${stuckRuns}/${STUCK_THRESHOLD}`);
+    }
+
     if (stuckRuns >= STUCK_THRESHOLD) {
       console.log(`[TK-DIAG] ensureAllConversationsLoaded — ` +
         `stuck for ${stuckRuns} consecutive iterations, all conversations loaded`);
