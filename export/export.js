@@ -18,6 +18,7 @@ const ALL_SECTIONS = [sectionConfig, sectionLoading, sectionList, sectionProgres
 
 let allConversations = [];
 let selectedIds = new Set();
+let detectedSite = null; // 'gemini'|'chatgpt'|'claude'
 let progressListener = null;
 let elapsedInterval = null;
 // Track previous completed+failed count to detect new log entries.
@@ -90,10 +91,13 @@ async function setSiteBadge() {
     const url = new URL(tab.url);
     const badge = document.getElementById('site-badge');
     if (url.hostname.includes('gemini.google.com')) {
+      detectedSite = 'gemini';
       badge.textContent = 'Gemini'; badge.className = 'site-badge gemini';
     } else if (url.hostname.includes('chatgpt.com')) {
+      detectedSite = 'chatgpt';
       badge.textContent = 'ChatGPT'; badge.className = 'site-badge chatgpt';
     } else if (url.hostname.includes('claude.ai')) {
+      detectedSite = 'claude';
       badge.textContent = 'Claude'; badge.className = 'site-badge claude';
     }
   } catch (_) {
@@ -217,6 +221,7 @@ document.getElementById('btn-start-export').addEventListener('click', async () =
     type: 'START_BULK_EXPORT',
     tabId: TAB_ID,
     conversations,
+    site: detectedSite,
     format,
     outputMode,
   });
