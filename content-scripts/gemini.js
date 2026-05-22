@@ -8,14 +8,31 @@
 
 // --- Title detection ---
 
+// Generic/placeholder titles that should NOT be accepted as real titles.
+// Orphaned-Gem conversations (deleted Gems) produce these because the
+// chat-page DOM has no title element — just the generic page chrome.
+const INVALID_TITLES = new Set([
+  'gemini',
+  'google gemini',
+  'conversation with gemini',
+]);
+
+function isInvalidTitle(s) {
+  return !s || INVALID_TITLES.has(s.toLowerCase());
+}
+
 function getTitle() {
   // HIGH stability: data-test-id is part of Google's internal test infra.
   const testId = document.querySelector('[data-test-id="conversation-title"]');
-  if (testId?.textContent.trim()) return testId.textContent.trim();
+  if (testId && !isInvalidTitle(testId.textContent.trim())) {
+    return testId.textContent.trim();
+  }
 
   // MEDIUM stability: class-based, but semantically named.
   const classTitle = document.querySelector('.conversation-title');
-  if (classTitle?.textContent.trim()) return classTitle.textContent.trim();
+  if (classTitle && !isInvalidTitle(classTitle.textContent.trim())) {
+    return classTitle.textContent.trim();
+  }
 
   // Sidebar fallback: find the currently-active conversation in the sidebar
   // and read its title text. Covers single-export of chats where the chat page
@@ -29,20 +46,25 @@ function getTitle() {
     document.querySelector('[data-test-id="conversation"][aria-selected="true"]');
   if (activeConv) {
     const sidebarTitle = (activeConv.innerText || '').trim();
-    if (sidebarTitle && sidebarTitle.length <= 200) return sidebarTitle;
-    if (sidebarTitle) return sidebarTitle.slice(0, 197) + '...';
+    if (!isInvalidTitle(sidebarTitle)) {
+      return sidebarTitle.length <= 200 ? sidebarTitle : sidebarTitle.slice(0, 197) + '...';
+    }
   }
 
   // Fallback: strip the "Gemini - " prefix from the page title.
   const pageTitle = document.title.replace(/^Gemini\s*[-–—]\s*/i, '').trim();
-  if (pageTitle && pageTitle !== 'Gemini' && pageTitle !== 'Google Gemini') return pageTitle;
+  if (!isInvalidTitle(pageTitle)) return pageTitle;
 
-  // Last resort: first user message, truncated.
+  // First user message, truncated to ~60 chars.
   const firstQuery = document.querySelector('user-query');
   if (firstQuery) {
     const text = firstQuery.innerText.trim();
     if (text) return text.length > 60 ? text.slice(0, 57) + '...' : text;
   }
+
+  // Final fallback: use chatId from URL.
+  const chatId = window.location.pathname.split('/').pop() || '';
+  if (chatId) return `untitled-${chatId.slice(0, 8)}`;
 
   return 'Untitled conversation';
 }
