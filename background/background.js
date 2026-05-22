@@ -36,6 +36,7 @@ console.log('Threadkeeper background loaded');
 let exportState = {
   phase: 'idle',       // 'idle'|'running'|'paused'|'complete'|'cancelled'
   tabId: null,
+  site: null,          // 'gemini'|'chatgpt'|'claude' — determines export strategy
   format: 'markdown',  // 'markdown'|'json'|'both'
   outputMode: 'both',  // 'individual'|'combined'|'both'
   conversations: [],   // [{id, title, url}] — sidebar-extracted, source of truth for titles
@@ -134,27 +135,30 @@ async function handleExportCurrent(format) {
 // --- List conversations ---
 
 async function handleListConversations(tabId) {
-  const resolvedTabId = tabId || await findGeminiTabId();
+  const resolvedTabId = tabId || await findSupportedTabId();
   if (!resolvedTabId) {
-    return { ok: false, error: 'No Gemini tab found. Open Gemini and try again.' };
+    return { ok: false, error: 'No supported AI tab found. Open Gemini or ChatGPT and try again.' };
   }
 
   try {
     return await browser.tabs.sendMessage(resolvedTabId, { type: 'LIST_CONVERSATIONS' });
   } catch (_err) {
-    return { ok: false, error: 'Content script not ready on Gemini tab.' };
+    return { ok: false, error: 'Content script not ready. Try refreshing the page.' };
   }
 }
 
-async function findGeminiTabId() {
-  const tabs = await browser.tabs.query({ url: 'https://gemini.google.com/*' });
-  return tabs[0]?.id ?? null;
+async function findSupportedTabId() {
+  for (const pattern of ['https://gemini.google.com/*', 'https://chatgpt.com/*', 'https://claude.ai/*']) {
+    const tabs = await browser.tabs.query({ url: pattern });
+    if (tabs[0]?.id) return tabs[0].id;
+  }
+  return null;
 }
 
 
 // --- Bulk export ---
 
-async function handleStartBulkExport({ tabId, conversations, format, outputMode }) {
+async function handleStartBulkExport({ tabId, conversations, format, outputMode, site }) {
   if (exportState.phase === 'running' || exportState.phase === 'paused') {
     return { ok: false, error: 'Export already in progress.' };
   }
@@ -170,6 +174,7 @@ async function handleStartBulkExport({ tabId, conversations, format, outputMode 
   exportState = {
     phase: 'running',
     tabId,
+    site: site || 'gemini',
     format: format || 'markdown',
     outputMode: outputMode || 'both',
     conversations,
@@ -197,6 +202,9 @@ async function handleStartBulkExport({ tabId, conversations, format, outputMode 
 async function runExport() {
   const delayMs = await getBulkDelay();
   const needsAccumulation = exportState.outputMode !== 'individual';
+  // ChatGPT uses API-only fetch (no tab navigation needed).
+  // Gemini uses navigate-tab + DOM scraping via PARSE_CURRENT.
+  const useApiFetch = exportState.site === 'chatgpt';
 
   for (let i = exportState.currentIndex; i < exportState.conversations.length; i++) {
     // Check for pause — spin-wait with 200ms granularity.
@@ -208,39 +216,49 @@ async function runExport() {
     exportState.currentIndex = i;
     const conv = exportState.conversations[i];
     const chatId = conv.id;
-    const sidebarTitle = conv.title; // Source of truth from sidebar extraction.
-    exportState.currentTitle = sidebarTitle;
+    const knownTitle = conv.title;
+    exportState.currentTitle = knownTitle;
     broadcastProgress();
 
     try {
-      // Navigate the Gemini tab to this conversation.
-      await browser.tabs.update(exportState.tabId, {
-        url: `https://gemini.google.com/app/${chatId}`,
-      });
+      let data;
 
-      // Wait for the new content script to signal readiness with matching chatId.
-      await waitForContentReady(exportState.tabId, chatId, 15000);
-      // [DIAG] Log post-handshake state.
-      console.log(`[TK-DIAG] runExport — content ready for "${chatId}", sending PARSE_CURRENT`);
+      if (useApiFetch) {
+        // ChatGPT: fetch conversation via API without navigating the tab.
+        console.log(`[TK-DIAG] runExport — API fetch for "${chatId}"`);
+        const response = await browser.tabs.sendMessage(exportState.tabId, {
+          type: 'FETCH_CONVERSATION',
+          chatId,
+        });
+        console.log(`[TK-DIAG] runExport — FETCH_CONVERSATION response for "${chatId}": ` +
+          `ok=${response?.ok}, messages=${response?.data?.messages?.length ?? 'N/A'}, ` +
+          `title="${response?.data?.title ?? 'N/A'}"`);
+        if (!response?.ok) throw new Error(response?.error || 'Fetch failed');
+        data = response.data;
+      } else {
+        // Gemini (and future DOM-scraping sites): navigate tab + PARSE_CURRENT.
+        await browser.tabs.update(exportState.tabId, {
+          url: `https://gemini.google.com/app/${chatId}`,
+        });
+        await waitForContentReady(exportState.tabId, chatId, 15000);
+        console.log(`[TK-DIAG] runExport — content ready for "${chatId}", sending PARSE_CURRENT`);
 
-      // Parse the conversation from the newly loaded page.
-      const response = await browser.tabs.sendMessage(exportState.tabId, {
-        type: 'PARSE_CURRENT',
-      });
+        const response = await browser.tabs.sendMessage(exportState.tabId, {
+          type: 'PARSE_CURRENT',
+        });
+        console.log(`[TK-DIAG] runExport — PARSE_CURRENT response for "${chatId}": ` +
+          `ok=${response?.ok}, messages=${response?.data?.messages?.length ?? 'N/A'}, ` +
+          `parsedTitle="${response?.data?.title ?? 'N/A'}", knownTitle="${knownTitle}"`);
+        if (!response?.ok) throw new Error(response?.error || 'Parse failed');
+        data = response.data;
+      }
 
-      // [DIAG] Log parse result summary.
-      console.log(`[TK-DIAG] runExport — PARSE_CURRENT response for "${chatId}": ` +
-        `ok=${response?.ok}, messages=${response?.data?.messages?.length ?? 'N/A'}, ` +
-        `parsedTitle="${response?.data?.title ?? 'N/A'}", sidebarTitle="${sidebarTitle}"`);
-
-      if (!response?.ok) throw new Error(response?.error || 'Parse failed');
-
-      const { data } = response;
-      // Override parsed title with sidebar-extracted title (source of truth).
-      // The parsed title can be generic ("Google Gemini", "Untitled conversation")
-      // when the chat page DOM lacks a title element.
-      data.title = sidebarTitle;
-      exportState.currentTitle = sidebarTitle;
+      // Override title with the known title from the conversation list.
+      // For Gemini, the sidebar title is more reliable than the parsed title.
+      // For ChatGPT, the API title matches the list, but we use the list
+      // title for consistency across the pipeline.
+      if (knownTitle) data.title = knownTitle;
+      exportState.currentTitle = data.title;
 
       // Download individual file(s) if needed.
       if (exportState.outputMode !== 'combined') {
@@ -252,13 +270,13 @@ async function runExport() {
         exportState.accumulated.push(data);
       }
 
-      exportState.completed.push({ id: chatId, title: sidebarTitle });
+      exportState.completed.push({ id: chatId, title: data.title });
 
     } catch (err) {
       console.error(`[Threadkeeper] Failed to export ${chatId}:`, err);
       exportState.failed.push({
         id: chatId,
-        title: sidebarTitle || chatId,
+        title: knownTitle || chatId,
         error: err.message,
       });
     }
@@ -266,7 +284,7 @@ async function runExport() {
     await saveStateToStorage();
     broadcastProgress();
 
-    // Rate-limit between navigations.
+    // Rate-limit between conversations.
     if (i < exportState.conversations.length - 1) {
       await sleep(delayMs);
     }
@@ -291,10 +309,11 @@ async function handleRetryFailed() {
   }
 
   // Rebuild conversation objects from the failed array (which has id + title).
+  const site = exportState.site || 'gemini';
   exportState.conversations = exportState.failed.map((f) => ({
     id: f.id,
     title: f.title,
-    url: `https://gemini.google.com/app/${f.id}`,
+    url: f.url || buildConversationUrl(site, f.id),
   }));
   exportState.currentIndex = 0;
   exportState.failed = [];
@@ -401,6 +420,12 @@ async function writeCombinedOutput() {
 
 // --- State helpers ---
 
+function buildConversationUrl(site, chatId) {
+  if (site === 'chatgpt') return `https://chatgpt.com/c/${chatId}`;
+  if (site === 'claude') return `https://claude.ai/chat/${chatId}`;
+  return `https://gemini.google.com/app/${chatId}`;
+}
+
 function getExportStateSummary() {
   const { phase, format, outputMode, conversations, currentIndex, currentTitle,
           completed, failed, startTime } = exportState;
@@ -426,10 +451,10 @@ async function getBulkDelay() {
 
 async function saveStateToStorage() {
   // Persist everything except accumulated (too large for storage).
-  const { phase, format, outputMode, conversations, currentIndex,
+  const { phase, site, format, outputMode, conversations, currentIndex,
           completed, failed, startTime } = exportState;
   await browser.storage.local.set({
-    exportState: { phase, format, outputMode, conversations, currentIndex,
+    exportState: { phase, site, format, outputMode, conversations, currentIndex,
                    completed, failed, startTime },
   });
 }
