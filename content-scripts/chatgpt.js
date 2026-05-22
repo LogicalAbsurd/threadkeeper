@@ -15,21 +15,12 @@ const SESSION_URL = '/api/auth/session';
 const PAGE_SIZE = 100;
 
 // --- Session token management ---
+// Content scripts run in an isolated world and cannot access page JS globals
+// like __remixContext. Instead, we fetch the token from ChatGPT's session
+// endpoint, which is cookie-authenticated (same-origin, no CORS issues).
 
 let _cachedToken = null;
 
-// Primary: read token from Remix context (injected on page load).
-// HIGH stability — this is how ChatGPT's own frontend gets its token.
-function getPageAccessToken() {
-  try {
-    return window?.__remixContext?.state?.loaderData?.root
-      ?.clientBootstrap?.session?.accessToken ?? null;
-  } catch (_) {
-    return null;
-  }
-}
-
-// Fallback: fetch from session endpoint using existing cookies.
 async function fetchSessionToken() {
   const res = await fetch(SESSION_URL);
   if (!res.ok) throw new Error(`Session fetch failed: ${res.status} ${res.statusText}`);
@@ -40,13 +31,6 @@ async function fetchSessionToken() {
 
 async function getAccessToken() {
   if (_cachedToken) return _cachedToken;
-
-  const pageToken = getPageAccessToken();
-  if (pageToken) {
-    _cachedToken = pageToken;
-    return pageToken;
-  }
-
   _cachedToken = await fetchSessionToken();
   return _cachedToken;
 }
