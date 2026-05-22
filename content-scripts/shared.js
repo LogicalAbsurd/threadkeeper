@@ -14,8 +14,9 @@
 //     → { ok: true, data: [{id, title, url}] } | { ok: false, error }
 //     Background forwards to the content script on the given tab.
 //
-//   { type: 'START_BULK_EXPORT', tabId, conversations, format, outputMode }
-//     conversations: [{id, title, url}] — sidebar-extracted, title is source of truth
+//   { type: 'START_BULK_EXPORT', tabId, conversations, site, format, outputMode }
+//     conversations: [{id, title, url}] — list-extracted, title is source of truth
+//     site: 'gemini' | 'chatgpt' | 'claude' — determines export strategy
 //     format: 'markdown' | 'json' | 'both'
 //     outputMode: 'individual' | 'combined' | 'both'
 //     → { ok: true } | { ok: false, error }
@@ -32,6 +33,10 @@
 //
 //   { type: 'LIST_CONVERSATIONS' }
 //     → { ok, data: [{id, title, url}] }
+//
+//   { type: 'FETCH_CONVERSATION', chatId }
+//     Fetch a conversation by ID via API (ChatGPT only — no tab navigation).
+//     → { ok, data: { title, site, url, exportedAt, messages } }
 //
 // --- Content script → Background (one-way, no response) ---
 //   { type: 'CONTENT_READY', chatId }
