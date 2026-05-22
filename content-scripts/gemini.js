@@ -56,9 +56,10 @@ function getTitle() {
   if (!isInvalidTitle(pageTitle)) return pageTitle;
 
   // First user message, truncated to ~60 chars.
+  // Strip "You said" screen-reader label that Gemini renders inside user-query.
   const firstQuery = document.querySelector('user-query');
   if (firstQuery) {
-    const text = firstQuery.innerText.trim();
+    const text = firstQuery.innerText.trim().replace(/^\s*you said[:\s]*/i, '');
     if (text) return text.length > 60 ? text.slice(0, 57) + '...' : text;
   }
 
