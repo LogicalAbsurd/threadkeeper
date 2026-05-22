@@ -38,7 +38,7 @@ let exportState = {
   tabId: null,
   format: 'markdown',  // 'markdown'|'json'|'both'
   outputMode: 'both',  // 'individual'|'combined'|'both'
-  chatIds: [],
+  conversations: [],   // [{id, title, url}] — sidebar-extracted, source of truth for titles
   currentIndex: 0,
   currentTitle: '',
   completed: [],       // [{id, title}]
@@ -154,17 +154,17 @@ async function findGeminiTabId() {
 
 // --- Bulk export ---
 
-async function handleStartBulkExport({ tabId, chatIds, format, outputMode }) {
+async function handleStartBulkExport({ tabId, conversations, format, outputMode }) {
   if (exportState.phase === 'running' || exportState.phase === 'paused') {
     return { ok: false, error: 'Export already in progress.' };
   }
 
-  if (!chatIds || chatIds.length === 0) {
+  if (!conversations || conversations.length === 0) {
     return { ok: false, error: 'No conversations selected.' };
   }
 
-  if (chatIds.length > 200) {
-    console.warn(`[Threadkeeper] Large export: ${chatIds.length} conversations.`);
+  if (conversations.length > 200) {
+    console.warn(`[Threadkeeper] Large export: ${conversations.length} conversations.`);
   }
 
   exportState = {
@@ -172,7 +172,7 @@ async function handleStartBulkExport({ tabId, chatIds, format, outputMode }) {
     tabId,
     format: format || 'markdown',
     outputMode: outputMode || 'both',
-    chatIds,
+    conversations,
     currentIndex: 0,
     currentTitle: '',
     completed: [],
@@ -198,7 +198,7 @@ async function runExport() {
   const delayMs = await getBulkDelay();
   const needsAccumulation = exportState.outputMode !== 'individual';
 
-  for (let i = exportState.currentIndex; i < exportState.chatIds.length; i++) {
+  for (let i = exportState.currentIndex; i < exportState.conversations.length; i++) {
     // Check for pause — spin-wait with 200ms granularity.
     while (exportState.phase === 'paused') {
       await sleep(200);
@@ -206,8 +206,10 @@ async function runExport() {
     if (exportState.phase === 'cancelled') break;
 
     exportState.currentIndex = i;
-    const chatId = exportState.chatIds[i];
-    exportState.currentTitle = '';
+    const conv = exportState.conversations[i];
+    const chatId = conv.id;
+    const sidebarTitle = conv.title; // Source of truth from sidebar extraction.
+    exportState.currentTitle = sidebarTitle;
     broadcastProgress();
 
     try {
@@ -229,12 +231,16 @@ async function runExport() {
       // [DIAG] Log parse result summary.
       console.log(`[TK-DIAG] runExport — PARSE_CURRENT response for "${chatId}": ` +
         `ok=${response?.ok}, messages=${response?.data?.messages?.length ?? 'N/A'}, ` +
-        `title="${response?.data?.title ?? 'N/A'}"`);
+        `parsedTitle="${response?.data?.title ?? 'N/A'}", sidebarTitle="${sidebarTitle}"`);
 
       if (!response?.ok) throw new Error(response?.error || 'Parse failed');
 
       const { data } = response;
-      exportState.currentTitle = data.title;
+      // Override parsed title with sidebar-extracted title (source of truth).
+      // The parsed title can be generic ("Google Gemini", "Untitled conversation")
+      // when the chat page DOM lacks a title element.
+      data.title = sidebarTitle;
+      exportState.currentTitle = sidebarTitle;
 
       // Download individual file(s) if needed.
       if (exportState.outputMode !== 'combined') {
@@ -246,13 +252,13 @@ async function runExport() {
         exportState.accumulated.push(data);
       }
 
-      exportState.completed.push({ id: chatId, title: data.title });
+      exportState.completed.push({ id: chatId, title: sidebarTitle });
 
     } catch (err) {
       console.error(`[Threadkeeper] Failed to export ${chatId}:`, err);
       exportState.failed.push({
         id: chatId,
-        title: exportState.currentTitle || chatId,
+        title: sidebarTitle || chatId,
         error: err.message,
       });
     }
@@ -261,7 +267,7 @@ async function runExport() {
     broadcastProgress();
 
     // Rate-limit between navigations.
-    if (i < exportState.chatIds.length - 1) {
+    if (i < exportState.conversations.length - 1) {
       await sleep(delayMs);
     }
   }
@@ -284,8 +290,12 @@ async function handleRetryFailed() {
     return { ok: false, error: 'No failed conversations to retry.' };
   }
 
-  const retryIds = exportState.failed.map((f) => f.id);
-  exportState.chatIds = retryIds;
+  // Rebuild conversation objects from the failed array (which has id + title).
+  exportState.conversations = exportState.failed.map((f) => ({
+    id: f.id,
+    title: f.title,
+    url: `https://gemini.google.com/app/${f.id}`,
+  }));
   exportState.currentIndex = 0;
   exportState.failed = [];
   exportState.accumulated = [];
@@ -392,13 +402,13 @@ async function writeCombinedOutput() {
 // --- State helpers ---
 
 function getExportStateSummary() {
-  const { phase, format, outputMode, chatIds, currentIndex, currentTitle,
+  const { phase, format, outputMode, conversations, currentIndex, currentTitle,
           completed, failed, startTime } = exportState;
   return {
     phase,
     format,
     outputMode,
-    total: chatIds.length,
+    total: conversations.length,
     currentIndex,
     currentTitle,
     completedCount: completed.length,
@@ -416,10 +426,10 @@ async function getBulkDelay() {
 
 async function saveStateToStorage() {
   // Persist everything except accumulated (too large for storage).
-  const { phase, format, outputMode, chatIds, currentIndex,
+  const { phase, format, outputMode, conversations, currentIndex,
           completed, failed, startTime } = exportState;
   await browser.storage.local.set({
-    exportState: { phase, format, outputMode, chatIds, currentIndex,
+    exportState: { phase, format, outputMode, conversations, currentIndex,
                    completed, failed, startTime },
   });
 }

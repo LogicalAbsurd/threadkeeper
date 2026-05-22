@@ -192,16 +192,22 @@ document.getElementById('btn-select-invert').addEventListener('click', () => {
 // --- Start export ---
 
 document.getElementById('btn-start-export').addEventListener('click', async () => {
-  const chatIds = [...selectedIds];
-  if (chatIds.length === 0) return;
+  const selected = [...selectedIds];
+  if (selected.length === 0) return;
+
+  // Send full conversation objects so background has sidebar-extracted titles.
+  const conversations = selected
+    .map((id) => allConversations.find((c) => c.id === id))
+    .filter(Boolean);
+  if (conversations.length === 0) return;
 
   const format = document.querySelector('input[name="format"]:checked').value;
   const outputMode = document.querySelector('input[name="output"]:checked').value;
 
-  if (chatIds.length > 50) {
-    const minutes = Math.ceil(chatIds.length * 0.5 / 60);
+  if (conversations.length > 50) {
+    const minutes = Math.ceil(conversations.length * 0.5 / 60);
     const ok = confirm(
-      `You're about to export ${chatIds.length} conversations. ` +
+      `You're about to export ${conversations.length} conversations. ` +
       `This will take approximately ${minutes} minute${minutes === 1 ? '' : 's'}. Continue?`
     );
     if (!ok) return;
@@ -210,7 +216,7 @@ document.getElementById('btn-start-export').addEventListener('click', async () =
   const response = await browser.runtime.sendMessage({
     type: 'START_BULK_EXPORT',
     tabId: TAB_ID,
-    chatIds,
+    conversations,
     format,
     outputMode,
   });

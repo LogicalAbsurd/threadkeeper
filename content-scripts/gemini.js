@@ -17,9 +17,25 @@ function getTitle() {
   const classTitle = document.querySelector('.conversation-title');
   if (classTitle?.textContent.trim()) return classTitle.textContent.trim();
 
+  // Sidebar fallback: find the currently-active conversation in the sidebar
+  // and read its title text. Covers single-export of chats where the chat page
+  // DOM has no title element (document.title is just "Google Gemini").
+  // MEDIUM stability: aria-current is a standard accessibility attribute for
+  // indicating the active item in a navigation list.
+  const activeConv =
+    document.querySelector('[data-test-id="conversation"][aria-current="page"]') ||
+    document.querySelector('[data-test-id="conversation"][aria-current="true"]') ||
+    document.querySelector('[data-test-id="conversation"].selected') ||
+    document.querySelector('[data-test-id="conversation"][aria-selected="true"]');
+  if (activeConv) {
+    const sidebarTitle = (activeConv.innerText || '').trim();
+    if (sidebarTitle && sidebarTitle.length <= 200) return sidebarTitle;
+    if (sidebarTitle) return sidebarTitle.slice(0, 197) + '...';
+  }
+
   // Fallback: strip the "Gemini - " prefix from the page title.
   const pageTitle = document.title.replace(/^Gemini\s*[-–—]\s*/i, '').trim();
-  if (pageTitle && pageTitle !== 'Gemini') return pageTitle;
+  if (pageTitle && pageTitle !== 'Gemini' && pageTitle !== 'Google Gemini') return pageTitle;
 
   // Last resort: first user message, truncated.
   const firstQuery = document.querySelector('user-query');

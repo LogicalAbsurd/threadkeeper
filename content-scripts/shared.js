@@ -14,7 +14,8 @@
 //     → { ok: true, data: [{id, title, url}] } | { ok: false, error }
 //     Background forwards to the content script on the given tab.
 //
-//   { type: 'START_BULK_EXPORT', tabId, chatIds, format, outputMode }
+//   { type: 'START_BULK_EXPORT', tabId, conversations, format, outputMode }
+//     conversations: [{id, title, url}] — sidebar-extracted, title is source of truth
 //     format: 'markdown' | 'json' | 'both'
 //     outputMode: 'individual' | 'combined' | 'both'
 //     → { ok: true } | { ok: false, error }
