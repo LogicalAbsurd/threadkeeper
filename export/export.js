@@ -118,6 +118,11 @@ async function setSiteBadge() {
     } else if (url.hostname.includes('claude.ai')) {
       detectedSite = 'claude';
       badge.textContent = 'Claude'; badge.className = 'site-badge claude';
+      // Archive toggle: Claude's API may expose an is_archived field on
+      // conversation summaries. Until verified during live testing, leave
+      // the archive toggle hidden for Claude. This is a known gap —
+      // see PHASE_6_SCOPE.md for context.
+      document.getElementById('row-thinking').hidden = false;
     }
   } catch (_) {
     // Tab may have been closed.
@@ -236,6 +241,7 @@ document.getElementById('btn-start-export').addEventListener('click', async () =
     if (!ok) return;
   }
 
+  const includeThinking = document.getElementById('opt-include-thinking')?.checked !== false;
   const response = await browser.runtime.sendMessage({
     type: 'START_BULK_EXPORT',
     tabId: TAB_ID,
@@ -243,6 +249,7 @@ document.getElementById('btn-start-export').addEventListener('click', async () =
     site: detectedSite,
     format,
     outputMode,
+    includeThinking,
   });
 
   if (!response?.ok) {
@@ -385,7 +392,9 @@ document.getElementById('btn-new-export').addEventListener('click', () => {
 // --- Preferences ---
 
 async function loadPreferences() {
-  const stored = await browser.storage.local.get(['format', 'outputMode', 'includeArchived']);
+  const stored = await browser.storage.local.get([
+    'format', 'outputMode', 'includeArchived', 'includeThinking',
+  ]);
   if (stored.format) {
     const radio = document.querySelector(`input[name="format"][value="${stored.format}"]`);
     if (radio) radio.checked = true;
@@ -396,6 +405,9 @@ async function loadPreferences() {
   }
   if (stored.includeArchived != null) {
     document.getElementById('opt-include-archived').checked = stored.includeArchived;
+  }
+  if (stored.includeThinking != null) {
+    document.getElementById('opt-include-thinking').checked = stored.includeThinking;
   }
 
   for (const radio of document.querySelectorAll('input[name="format"], input[name="output"]')) {
@@ -409,5 +421,9 @@ async function loadPreferences() {
 
   document.getElementById('opt-include-archived').addEventListener('change', (e) => {
     browser.storage.local.set({ includeArchived: e.target.checked });
+  });
+
+  document.getElementById('opt-include-thinking').addEventListener('change', (e) => {
+    browser.storage.local.set({ includeThinking: e.target.checked });
   });
 }

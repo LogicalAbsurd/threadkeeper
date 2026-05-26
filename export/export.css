@@ -61,7 +61,7 @@ body {
 .site-badge:empty { display: none; }
 .site-badge.gemini  { background: #4285f4; }
 .site-badge.chatgpt { background: #10a37f; }
-.site-badge.claude  { background: #d97706; }
+.site-badge.claude  { background: #cc785c; }
 
 /* --- Main content --- */
 
