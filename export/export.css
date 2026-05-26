@@ -221,6 +221,7 @@ body {
 }
 .chat-item:last-child { border-bottom: none; }
 .chat-item:hover { background: #fafafa; }
+.chat-item[hidden] { display: none; }
 
 .chat-item-label {
   font-size: 13px;
