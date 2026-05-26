@@ -46,6 +46,7 @@ let exportState = {
   failed: [],          // [{id, title, error}]
   startTime: null,
   accumulated: [],     // conversation data objects for combined output
+  includeThinking: true, // Claude-specific: include extended thinking blocks
 };
 
 
@@ -137,7 +138,7 @@ async function handleExportCurrent(format) {
 async function handleListConversations(tabId, includeArchived = false) {
   const resolvedTabId = tabId || await findSupportedTabId();
   if (!resolvedTabId) {
-    return { ok: false, error: 'No supported AI tab found. Open Gemini or ChatGPT and try again.' };
+    return { ok: false, error: 'No supported AI tab found. Open Gemini, ChatGPT, or Claude and try again.' };
   }
 
   try {
@@ -158,7 +159,7 @@ async function findSupportedTabId() {
 
 // --- Bulk export ---
 
-async function handleStartBulkExport({ tabId, conversations, format, outputMode, site }) {
+async function handleStartBulkExport({ tabId, conversations, format, outputMode, site, includeThinking }) {
   if (exportState.phase === 'running' || exportState.phase === 'paused') {
     return { ok: false, error: 'Export already in progress.' };
   }
@@ -177,6 +178,7 @@ async function handleStartBulkExport({ tabId, conversations, format, outputMode,
     site: site || 'gemini',
     format: format || 'markdown',
     outputMode: outputMode || 'both',
+    includeThinking: includeThinking !== false,
     conversations,
     currentIndex: 0,
     currentTitle: '',
@@ -202,9 +204,9 @@ async function handleStartBulkExport({ tabId, conversations, format, outputMode,
 async function runExport() {
   const delayMs = await getBulkDelay();
   const needsAccumulation = exportState.outputMode !== 'individual';
-  // ChatGPT uses API-only fetch (no tab navigation needed).
+  // ChatGPT and Claude use API-only fetch (no tab navigation needed).
   // Gemini uses navigate-tab + DOM scraping via PARSE_CURRENT.
-  const useApiFetch = exportState.site === 'chatgpt';
+  const useApiFetch = exportState.site === 'chatgpt' || exportState.site === 'claude';
 
   for (let i = exportState.currentIndex; i < exportState.conversations.length; i++) {
     // Check for pause — spin-wait with 200ms granularity.
@@ -229,6 +231,7 @@ async function runExport() {
         const response = await browser.tabs.sendMessage(exportState.tabId, {
           type: 'FETCH_CONVERSATION',
           chatId,
+          includeThinking: exportState.includeThinking,
         });
         console.log(`[TK-DIAG] runExport — FETCH_CONVERSATION response for "${chatId}": ` +
           `ok=${response?.ok}, messages=${response?.data?.messages?.length ?? 'N/A'}, ` +
@@ -451,11 +454,11 @@ async function getBulkDelay() {
 
 async function saveStateToStorage() {
   // Persist everything except accumulated (too large for storage).
-  const { phase, site, format, outputMode, conversations, currentIndex,
-          completed, failed, startTime } = exportState;
+  const { phase, site, format, outputMode, includeThinking, conversations,
+          currentIndex, completed, failed, startTime } = exportState;
   await browser.storage.local.set({
-    exportState: { phase, site, format, outputMode, conversations, currentIndex,
-                   completed, failed, startTime },
+    exportState: { phase, site, format, outputMode, includeThinking, conversations,
+                   currentIndex, completed, failed, startTime },
   });
 }
 
