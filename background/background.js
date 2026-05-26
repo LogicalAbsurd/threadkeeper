@@ -61,7 +61,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'LIST_CONVERSATIONS':
-      handleListConversations(message.tabId)
+      handleListConversations(message.tabId, message.includeArchived)
         .then(sendResponse)
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
@@ -134,14 +134,14 @@ async function handleExportCurrent(format) {
 
 // --- List conversations ---
 
-async function handleListConversations(tabId) {
+async function handleListConversations(tabId, includeArchived = false) {
   const resolvedTabId = tabId || await findSupportedTabId();
   if (!resolvedTabId) {
     return { ok: false, error: 'No supported AI tab found. Open Gemini or ChatGPT and try again.' };
   }
 
   try {
-    return await browser.tabs.sendMessage(resolvedTabId, { type: 'LIST_CONVERSATIONS' });
+    return await browser.tabs.sendMessage(resolvedTabId, { type: 'LIST_CONVERSATIONS', includeArchived });
   } catch (_err) {
     return { ok: false, error: 'Content script not ready. Try refreshing the page.' };
   }

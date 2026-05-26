@@ -60,11 +60,23 @@ async function init() {
   showSection(sectionLoading);
   await loadPreferences();
 
+  await fetchAndRenderConversations();
+}
+
+init();
+
+
+// --- Fetch + render conversation list (reusable) ---
+
+async function fetchAndRenderConversations() {
+  const includeArchived = document.getElementById('opt-include-archived')?.checked ?? false;
+
   let conversations;
   try {
     const response = await browser.runtime.sendMessage({
       type: 'LIST_CONVERSATIONS',
       tabId: TAB_ID,
+      includeArchived,
     });
     if (!response?.ok) throw new Error(response?.error || 'Failed to list conversations');
     conversations = response.data;
@@ -80,7 +92,13 @@ async function init() {
   showSection(sectionList);
 }
 
-init();
+// Re-fetch when the archive checkbox toggles.
+document.getElementById('opt-include-archived').addEventListener('change', async () => {
+  hideSection(sectionList);
+  showSection(sectionLoading);
+  document.getElementById('loading-message').textContent = 'Loading conversation list\u2026';
+  await fetchAndRenderConversations();
+});
 
 
 // --- Site badge ---
@@ -96,6 +114,7 @@ async function setSiteBadge() {
     } else if (url.hostname.includes('chatgpt.com')) {
       detectedSite = 'chatgpt';
       badge.textContent = 'ChatGPT'; badge.className = 'site-badge chatgpt';
+      document.getElementById('row-archive').hidden = false;
     } else if (url.hostname.includes('claude.ai')) {
       detectedSite = 'claude';
       badge.textContent = 'Claude'; badge.className = 'site-badge claude';
@@ -366,7 +385,7 @@ document.getElementById('btn-new-export').addEventListener('click', () => {
 // --- Preferences ---
 
 async function loadPreferences() {
-  const stored = await browser.storage.local.get(['format', 'outputMode']);
+  const stored = await browser.storage.local.get(['format', 'outputMode', 'includeArchived']);
   if (stored.format) {
     const radio = document.querySelector(`input[name="format"][value="${stored.format}"]`);
     if (radio) radio.checked = true;
@@ -374,6 +393,9 @@ async function loadPreferences() {
   if (stored.outputMode) {
     const radio = document.querySelector(`input[name="output"][value="${stored.outputMode}"]`);
     if (radio) radio.checked = true;
+  }
+  if (stored.includeArchived != null) {
+    document.getElementById('opt-include-archived').checked = stored.includeArchived;
   }
 
   for (const radio of document.querySelectorAll('input[name="format"], input[name="output"]')) {
@@ -384,4 +406,8 @@ async function loadPreferences() {
       });
     });
   }
+
+  document.getElementById('opt-include-archived').addEventListener('change', (e) => {
+    browser.storage.local.set({ includeArchived: e.target.checked });
+  });
 }

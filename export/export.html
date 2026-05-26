@@ -39,13 +39,20 @@
             <label class="seg-option"><input type="radio" name="output" value="both" checked><span>Both</span></label>
           </div>
         </div>
+        <div class="option-row" id="row-archive" hidden>
+          <span class="option-label">Include</span>
+          <label class="checkbox-option">
+            <input type="checkbox" id="opt-include-archived">
+            <span>Archived conversations</span>
+          </label>
+        </div>
       </section>
 
       <!-- Loading indicator -->
       <section id="section-loading" class="card" hidden>
         <div class="loading-row">
           <div class="spinner"></div>
-          <p id="loading-message">Loading conversation list from Gemini&hellip;</p>
+          <p id="loading-message">Loading conversation list&hellip;</p>
         </div>
       </section>
 
@@ -60,7 +67,7 @@
           </div>
         </div>
         <div id="warning-large" class="notice warning" hidden>
-          Large export: this may take a while. Gemini may rate-limit navigation.
+          Large export: this may take a while. The site may rate-limit requests.
         </div>
         <div id="chat-list" class="chat-list"></div>
         <div class="export-bar">

@@ -77,28 +77,38 @@ async function fetchApi(url, retryOn401 = true) {
 
 // --- Conversation list (offset-paginated) ---
 
-async function listConversations() {
+async function _paginateConversations(isArchived) {
   const allItems = [];
   let offset = 0;
+  const label = isArchived ? 'archived' : 'active';
 
-  console.log(`[TK-DIAG] listConversations — starting paginated fetch`);
+  console.log(`[TK-DIAG] _paginateConversations(${label}) — starting paginated fetch`);
 
   while (true) {
-    const url = `${API_BASE}/conversations?offset=${offset}&limit=${PAGE_SIZE}`;
+    const url = `${API_BASE}/conversations?offset=${offset}&limit=${PAGE_SIZE}` +
+      (isArchived ? '&is_archived=true' : '');
     const data = await fetchApi(url);
     const items = data.items || [];
 
-    console.log(`[TK-DIAG] listConversations — offset=${offset}, ` +
+    console.log(`[TK-DIAG] _paginateConversations(${label}) — offset=${offset}, ` +
       `got ${items.length} items, total=${data.total ?? '(unknown)'}`);
 
     for (const item of items) {
+      let createdAt;
+      if (item.create_time) {
+        const ms = item.create_time * 1000;
+        if (Number.isFinite(ms)) {
+          const d = new Date(ms);
+          if (!Number.isNaN(d.getTime())) {
+            createdAt = d.toISOString();
+          }
+        }
+      }
       allItems.push({
         id: item.id,
         title: item.title || 'Untitled',
         url: `https://chatgpt.com/c/${item.id}`,
-        createdAt: item.create_time
-          ? new Date(item.create_time * 1000).toISOString()
-          : undefined,
+        createdAt,
       });
     }
 
@@ -109,8 +119,17 @@ async function listConversations() {
     if (data.total != null && offset >= data.total) break;
   }
 
-  console.log(`[TK-DIAG] listConversations — done, ${allItems.length} total conversations`);
+  console.log(`[TK-DIAG] _paginateConversations(${label}) — done, ${allItems.length} items`);
   return allItems;
+}
+
+async function listConversations({ includeArchived = false } = {}) {
+  const active = await _paginateConversations(false);
+  if (!includeArchived) return active;
+
+  const archived = await _paginateConversations(true);
+  console.log(`[TK-DIAG] listConversations — ${active.length} active + ${archived.length} archived`);
+  return active.concat(archived);
 }
 
 
@@ -297,7 +316,7 @@ browser.runtime.onMessage.addListener((message) => {
   if (message.type === 'LIST_CONVERSATIONS') {
     return (async () => {
       try {
-        const data = await listConversations();
+        const data = await listConversations({ includeArchived: message.includeArchived });
         return { ok: true, data };
       } catch (err) {
         return { ok: false, error: err.message };
