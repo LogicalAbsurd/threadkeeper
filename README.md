@@ -15,7 +15,11 @@ If you previously created a Gem (custom Gemini persona) and later deleted it, co
 
 ## Acknowledgments
 
-ChatGPT export support uses API endpoint and authentication patterns adapted from [chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) by Pionxzh (MIT license). See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for details.
+ChatGPT export support uses API endpoint and authentication patterns adapted from [chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) by Pionxzh (MIT license).
+
+Claude.ai export support uses API endpoint patterns adapted from [claude-exporter](https://github.com/agoramachina/claude-exporter) by agoramachina (MIT license), a fork of [Claude-Conversation-Exporter](https://github.com/socketteer/Claude-Conversation-Exporter) by socketteer (MIT license).
+
+See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for full license texts.
 
 ## License
 
