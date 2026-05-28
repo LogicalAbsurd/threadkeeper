@@ -2,24 +2,51 @@
 
 Export your AI chat conversations to Markdown or JSON. Your data, your disk, your archive.
 
-A Firefox & Chrome extension that exports conversations from Google Gemini, ChatGPT, and Claude.ai to local files.
+A Firefox and Chrome (Manifest V3) browser extension that exports conversations from ChatGPT, Claude.ai, and Google Gemini to local Markdown or JSON files. No accounts, no servers, no API keys — everything runs in the browser against the sites you're already logged into.
 
 ## Status
 
-Early development. Not yet packaged.
+Threadkeeper is in a working, late-development stage supporting exports from all three platforms. Planned: UX design, further documentation, a future-features brainstorm, Mozilla Add-ons / Chrome Web Store submission, and possible monetization.
 
-## Known Limitations
+## Features
+
+- **Three platforms:** ChatGPT, Claude.ai, Google Gemini
+- **Export modes:** single conversation, bulk (all), or selective (pick from a searchable checklist)
+- **Output formats:** Markdown (primary) and JSON (raw backup), individually or combined
+- **Preserves** code blocks, conversation structure, and message ordering
+- **Claude.ai extras:** optional extended-thinking blocks; artifacts rendered inline
+- **Local-only:** no network calls beyond the AI sites themselves; no analytics, no telemetry
+
+## Installation
+
+Threadkeeper is not yet on extension stores. For now, install it as a temporary add-on:
+
+1. Clone or download this repo.
+2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on** and select the `manifest.json` file from the repo root.
+
+Permanent install via Mozilla Add-ons and the Chrome Web Store is planned.
+
+## Usage
+
+Click the Threadkeeper toolbar icon while on a supported site. For single-chat export, pick your format and click Export. For bulk or selective export, choose your mode from the popup — an export page opens with a searchable conversation list, format and output options, and progress tracking.
+
+## How it works
+
+Each supported site implements a common three-function interface: list conversations, load a conversation, and parse its messages. Adding a platform means implementing that triad without touching the formatters or background script. ChatGPT and Claude.ai use their internal JSON APIs via cookie-based auth — no DOM scraping required. Gemini uses DOM extraction with a three-technique lazy-load strategy to capture long conversations. A background script owns downloads and orchestration; content scripts never navigate or download directly. Normalized message data flows into pure-function Markdown and JSON formatters that are completely site-agnostic.
+
+## Privacy
+
+All processing happens in the browser. Host permissions are scoped to exactly the three target domains (`chatgpt.com`, `claude.ai`, `gemini.google.com`) and nothing else. No data leaves the machine except the files you choose to download.
+
+## Known limitations
 
 ### Conversations from deleted Gems
 If you previously created a Gem (custom Gemini persona) and later deleted it, conversations you had with that Gem become "orphaned" — they remain in Gemini's search but lose their title-rendering context. Threadkeeper will export their content correctly, but uses the first user message as the filename instead of a proper title.
 
 ## Acknowledgments
 
-ChatGPT export support uses API endpoint and authentication patterns adapted from [chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) by Pionxzh (MIT license).
-
-Claude.ai export support uses API endpoint patterns adapted from [claude-exporter](https://github.com/agoramachina/claude-exporter) by agoramachina (MIT license), a fork of [Claude-Conversation-Exporter](https://github.com/socketteer/Claude-Conversation-Exporter) by socketteer (MIT license).
-
-See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for full license texts.
+ChatGPT export support adapts API and authentication patterns from [chatgpt-exporter](https://github.com/pionxzh/chatgpt-exporter) by Pionxzh (MIT). Claude.ai export support adapts patterns from [claude-exporter](https://github.com/agoramachina/claude-exporter) by agoramachina and [Claude-Conversation-Exporter](https://github.com/socketteer/Claude-Conversation-Exporter) by socketteer (both MIT). See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for details.
 
 ## License
 
