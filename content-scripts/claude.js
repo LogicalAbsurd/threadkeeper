@@ -194,20 +194,6 @@ function walkBranch(chatMessages, leafUuid) {
 
 // --- Content block rendering ---
 
-// Inline artifact tags (old format):
-//   <antArtifact identifier="..." type="..." title="..." language="...">content</antArtifact>
-// FRAGILE: Claude.ai may change artifact tag format at any time.
-const ARTIFACT_TAG_RE = /<antArtifact\b([^>]*)>([\s\S]*?)<\/antArtifact>/g;
-
-// Stray self-closing or orphaned artifact-related tags that appear in some responses.
-const ARTIFACT_LINK_RE = /<\/?(?:antArtifact|ANTARTIFACTLINK)[^>]*\/?>/g;
-
-function parseArtifactAttrs(attrStr) {
-  const title = attrStr.match(/\btitle="([^"]*)"/)?.[1] || 'Untitled Artifact';
-  const language = attrStr.match(/\blanguage="([^"]*)"/)?.[1] || '';
-  return { title, language };
-}
-
 function renderContentBlocks(contentArray, includeThinking = true) {
   if (!Array.isArray(contentArray)) return '';
 
@@ -217,24 +203,8 @@ function renderContentBlocks(contentArray, includeThinking = true) {
     if (!block || !block.type) continue;
 
     if (block.type === 'text') {
-      let text = block.text || '';
-
-      // Extract inline artifacts (old format) before emitting prose.
-      const artifactParts = [];
-      text = text.replace(ARTIFACT_TAG_RE, (_match, attrs, content) => {
-        const { title, language } = parseArtifactAttrs(attrs);
-        artifactParts.push(
-          `### Artifact: ${title}\n\`\`\`${language}\n${content.trim()}\n\`\`\``
-        );
-        return ''; // Remove from surrounding prose.
-      });
-
-      // Strip stray artifact link/closing tags.
-      text = text.replace(ARTIFACT_LINK_RE, '').trim();
-
+      const text = (block.text || '').trim();
       if (text) parts.push(text);
-      // Append extracted artifacts after the surrounding prose.
-      parts.push(...artifactParts);
     }
 
     else if (block.type === 'thinking') {

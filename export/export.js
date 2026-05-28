@@ -384,7 +384,8 @@ document.getElementById('btn-retry-failed').addEventListener('click', async () =
   startElapsedTimer(new Date().toISOString());
 });
 
-document.getElementById('btn-new-export').addEventListener('click', () => {
+document.getElementById('btn-new-export').addEventListener('click', async () => {
+  await browser.runtime.sendMessage({ type: 'RESET_EXPORT_STATE' });
   location.reload();
 });
 

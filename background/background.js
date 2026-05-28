@@ -99,6 +99,26 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(getExportStateSummary());
       return;
 
+    case 'RESET_EXPORT_STATE':
+      exportState = {
+        phase: 'idle',
+        tabId: null,
+        site: null,
+        format: 'markdown',
+        outputMode: 'both',
+        conversations: [],
+        currentIndex: 0,
+        currentTitle: '',
+        completed: [],
+        failed: [],
+        startTime: null,
+        accumulated: [],
+        includeThinking: true,
+      };
+      browser.storage.local.remove('exportState');
+      sendResponse({ ok: true });
+      return;
+
     case 'RETRY_FAILED':
       handleRetryFailed()
         .then(sendResponse)
