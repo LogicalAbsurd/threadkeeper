@@ -27,14 +27,20 @@ The rule: decisions happen in chat with Claude.ai; execution happens here. If yo
 - **Privacy posture**: zero network calls outside the target AI sites. No analytics, no telemetry, no remote logging. All processing happens in the browser.
 
 ## Code organization
-ai-chat-archiver/
+threadkeeper/
 ├── manifest.json                       extension config
 ├── CLAUDE.md                           this file
 ├── README.md                           user-facing
+├── ACKNOWLEDGMENTS.md                  credits
+├── LICENSE
 ├── popup/                              click-icon UI
 │   ├── popup.html
 │   ├── popup.css
 │   └── popup.js
+├── export/                             bulk/selective export UI (opens in own tab)
+│   ├── export.html
+│   ├── export.css
+│   └── export.js
 ├── content-scripts/                    per-site DOM scrapers
 │   ├── shared.js                       common helpers, message protocol
 │   ├── gemini.js
@@ -46,6 +52,7 @@ ai-chat-archiver/
 │   ├── markdown.js                     normalized data → .md string
 │   ├── json.js                         normalized data → .json string
 │   └── filename.js                     safe filename generation
+├── docs/                               handoffs, phase scopes
 └── icons/                              placeholder for now
 
 ## The site abstraction
