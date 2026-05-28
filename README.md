@@ -37,7 +37,7 @@ Each supported site implements a common three-function interface: list conversat
 
 ## Privacy
 
-All processing happens in the browser. Host permissions are scoped to exactly the three target domains (`chatgpt.com`, `claude.ai`, `gemini.google.com`) and nothing else. No data leaves the machine except the files you choose to download.
+All processing happens locally in your browser. Host permissions are scoped to exactly the three target domains (`chatgpt.com`, `claude.ai`, `gemini.google.com`) and nothing else. Threadkeeper makes no network requests of its own — it talks only to the AI sites you're already using, to read your conversations. Exported files are saved directly to your computer's Downloads folder. Nothing is ever transmitted to any third party, and there are no analytics or telemetry of any kind.
 
 ## Known limitations
 
