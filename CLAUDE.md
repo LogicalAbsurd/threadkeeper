@@ -65,7 +65,7 @@ The normalized data structure these produce is what the markdown/json formatters
 3. ✅ Gemini scraper — single chat export to MD/JSON
 4. ✅ Gemini scraper — bulk + selective
 5. ⬜ ChatGPT scraper (single → bulk)
-6. ⬜ Claude scraper (single → bulk)
+6. ✅ Claude scraper (single → bulk)
 7. ⬜ Polish, icons, README expansion, store submission prep
 
 ## Coding conventions
