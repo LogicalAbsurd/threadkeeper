@@ -1,9 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Jost:wght@400;500&display=swap');
 
 :root {
-  --bg-main: #131b2e;
-  --bg-surface: #1c2740;
-  --bg-input: #232f4a;
+  --bg-main: #08090d;
+  --bg-surface: #131b2e;
+  --bg-input: #1c2740;
   --text-primary: #f4f1ea;
   --text-muted: #94a3b8;
   --text-accent: #cbd5e1;
