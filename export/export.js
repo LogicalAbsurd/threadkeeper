@@ -23,6 +23,7 @@ let progressListener = null;
 let elapsedInterval = null;
 // Track previous completed+failed count to detect new log entries.
 let prevDoneCount = 0;
+let loadingWarningTimer = null;
 
 
 // --- Section visibility ---
@@ -32,6 +33,25 @@ function hideSection(el) { el.hidden = true; }
 function showOnly(...sections) {
   ALL_SECTIONS.forEach((s) => { s.hidden = true; });
   sections.forEach((s) => { s.hidden = false; });
+}
+
+// --- Loading warning timer ---
+
+function startLoadingWarningTimer() {
+  clearLoadingWarningTimer();
+  loadingWarningTimer = setTimeout(() => {
+    const warning = document.getElementById('loading-warning');
+    if (warning) warning.hidden = false;
+  }, 5000);
+}
+
+function clearLoadingWarningTimer() {
+  if (loadingWarningTimer) {
+    clearTimeout(loadingWarningTimer);
+    loadingWarningTimer = null;
+  }
+  const warning = document.getElementById('loading-warning');
+  if (warning) warning.hidden = true;
 }
 
 
@@ -58,6 +78,7 @@ async function init() {
   // Fresh start: show config + loading, fetch conversation list.
   showSection(sectionConfig);
   showSection(sectionLoading);
+  startLoadingWarningTimer();
   await loadPreferences();
 
   await fetchAndRenderConversations();
@@ -81,12 +102,14 @@ async function fetchAndRenderConversations() {
     if (!response?.ok) throw new Error(response?.error || 'Failed to list conversations');
     conversations = response.data;
   } catch (err) {
+    clearLoadingWarningTimer();
     document.getElementById('loading-message').textContent =
       `Failed to load conversations: ${err.message}`;
     return;
   }
 
   allConversations = conversations;
+  clearLoadingWarningTimer();
   hideSection(sectionLoading);
   renderChatList(conversations, MODE === 'all');
   showSection(sectionList);
@@ -96,6 +119,7 @@ async function fetchAndRenderConversations() {
 document.getElementById('opt-include-archived').addEventListener('change', async () => {
   hideSection(sectionList);
   showSection(sectionLoading);
+  startLoadingWarningTimer();
   document.getElementById('loading-message').textContent = 'Loading conversation list\u2026';
   await fetchAndRenderConversations();
 });
