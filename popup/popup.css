@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Jost:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,600;1,600&display=swap');
 
 :root {
   --bg-main: #08090d;
@@ -22,7 +22,7 @@
 
 body {
   width: 300px;
-  font-family: 'Jost', system-ui, -apple-system, sans-serif;
+  font-family: 'Titillium Web', system-ui, -apple-system, sans-serif;
   font-size: 14px;
   color: var(--text-primary);
   background: var(--bg-main);
@@ -39,10 +39,11 @@ header {
 }
 
 h1 {
-  font-family: 'Jost', system-ui, -apple-system, sans-serif;
+  font-family: 'Titillium Web', system-ui, sans-serif;
+  font-weight: 600;
+  font-style: italic;
   font-size: 19px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--silver-bright);
 }
 
@@ -57,9 +58,9 @@ h1 {
   display: none;
 }
 
-#site-badge.gemini  { background: #4285f4; }
-#site-badge.chatgpt { background: #10a37f; }
-#site-badge.claude  { background: var(--silver-dim); }
+#site-badge.gemini  { background: #4285f4; color: #fff; }
+#site-badge.chatgpt { background: #10a37f; color: #fff; }
+#site-badge.claude  { background: #cc785c; color: #fff; }
 
 .notice {
   color: var(--text-muted);
@@ -93,7 +94,7 @@ h1 {
   display: block;
   padding: 8px 0;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--silver);
   transition: all 0.15s ease;
   border-right: 1px solid var(--border-strong);
@@ -120,7 +121,7 @@ h1 {
   width: 100%;
   padding: 10px 12px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.02em;
   border: 1px solid var(--border-strong);
   border-radius: 2px;
@@ -192,7 +193,7 @@ footer {
 
 #settings-pane h2 {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.04em;
   margin-bottom: 8px;
   color: var(--text-accent);
