@@ -4,6 +4,10 @@ Export your AI chat conversations to Markdown or JSON. Your data, your disk, you
 
 A Firefox and Chrome (Manifest V3) browser extension that exports conversations from ChatGPT, Claude.ai, and Google Gemini to local Markdown or JSON files. No accounts, no servers, no API keys — everything runs in the browser against the sites you're already logged into.
 
+<p align="center">
+  <img src="screenshots/popup-claude.png" alt="Threadkeeper popup on Claude.ai" width="320">
+</p>
+
 ## Status
 
 Threadkeeper is in a working, late-development stage supporting exports from all three platforms. Planned: UX design, further documentation, a future-features brainstorm, Mozilla Add-ons / Chrome Web Store submission, and possible monetization.
@@ -16,6 +20,12 @@ Threadkeeper is in a working, late-development stage supporting exports from all
 - **Preserves** code blocks, conversation structure, and message ordering
 - **Claude.ai extras:** optional extended-thinking blocks; artifacts rendered inline
 - **Local-only:** no network calls beyond the AI sites themselves; no analytics, no telemetry
+
+<p align="center">
+  <img src="screenshots/popup-gemini.png" alt="Threadkeeper on Gemini" width="260">
+  <img src="screenshots/popup-chatgpt.png" alt="Threadkeeper on ChatGPT, settings expanded" width="260">
+  <img src="screenshots/popup-claude.png" alt="Threadkeeper on Claude.ai" width="260">
+</p>
 
 ## Installation
 
@@ -30,6 +40,16 @@ Permanent install via Mozilla Add-ons and the Chrome Web Store is planned.
 ## Usage
 
 Click the Threadkeeper toolbar icon while on a supported site. For single-chat export, pick your format and click Export. For bulk or selective export, choose your mode from the popup — an export page opens with a searchable conversation list, format and output options, and progress tracking.
+
+<p align="center">
+  <img src="screenshots/export-select.png" alt="Selective export with searchable conversation list" width="720">
+</p>
+
+Exports run with progress tracking and a per-conversation log. You can pause, cancel, or kick off a new export from the completion screen.
+
+<p align="center">
+  <img src="screenshots/export-progress.png" alt="Export in progress and complete" width="720">
+</p>
 
 ## How it works
 
