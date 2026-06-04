@@ -95,20 +95,31 @@ async function _paginateConversations(isArchived) {
 
     for (const item of items) {
       let createdAt;
+      let updatedAt;
       if (item.create_time) {
         const ms = item.create_time * 1000;
         if (Number.isFinite(ms)) {
           const d = new Date(ms);
-          if (!Number.isNaN(d.getTime())) {
-            createdAt = d.toISOString();
-          }
+          if (!Number.isNaN(d.getTime())) createdAt = d.toISOString();
         }
       }
+      if (item.update_time) {
+        const ms = item.update_time * 1000;
+        if (Number.isFinite(ms)) {
+          const d = new Date(ms);
+          if (!Number.isNaN(d.getTime())) updatedAt = d.toISOString();
+        }
+      }
+      // Normalize: if only one timestamp exists, copy to the other.
+      if (!createdAt && updatedAt) createdAt = updatedAt;
+      if (!updatedAt && createdAt) updatedAt = createdAt;
+
       allItems.push({
         id: item.id,
         title: item.title || 'Untitled',
         url: `https://chatgpt.com/c/${item.id}`,
         createdAt,
+        updatedAt,
       });
     }
 
@@ -123,13 +134,21 @@ async function _paginateConversations(isArchived) {
   return allItems;
 }
 
+function sortByRecency(conversations) {
+  return conversations.sort((a, b) => {
+    const ta = a.updatedAt || a.createdAt || '';
+    const tb = b.updatedAt || b.createdAt || '';
+    return tb.localeCompare(ta);
+  });
+}
+
 async function listConversations({ includeArchived = false } = {}) {
   const active = await _paginateConversations(false);
-  if (!includeArchived) return active;
+  if (!includeArchived) return sortByRecency(active);
 
   const archived = await _paginateConversations(true);
   console.log(`[TK-DIAG] listConversations — ${active.length} active + ${archived.length} archived`);
-  return active.concat(archived);
+  return sortByRecency(active.concat(archived));
 }
 
 

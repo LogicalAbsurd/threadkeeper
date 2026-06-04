@@ -156,6 +156,13 @@ async function setSiteBadge() {
 
 // --- Chat list rendering ---
 
+function formatDate(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function renderChatList(conversations, autoSelectAll) {
   const list = document.getElementById('chat-list');
   list.innerHTML = '';
@@ -185,6 +192,15 @@ function renderChatList(conversations, autoSelectAll) {
 
     item.appendChild(checkbox);
     item.appendChild(label);
+
+    const dateStr = formatDate(conv.createdAt || conv.updatedAt);
+    if (dateStr) {
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'chat-item-date';
+      dateSpan.textContent = dateStr;
+      item.appendChild(dateSpan);
+    }
+
     list.appendChild(item);
   }
 

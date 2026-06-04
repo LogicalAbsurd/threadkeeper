@@ -147,13 +147,29 @@ async function listConversations({ includeArchived = false } = {}) {
     ? conversations.filter((c) => !c.is_archived)
     : conversations;
 
-  return filtered.map((item) => ({
-    id: item.uuid,
-    title: item.name || 'Untitled Conversation',
-    url: `https://claude.ai/chat/${item.uuid}`,
-    createdAt: safeISO(item.created_at),
-    updatedAt: safeISO(item.updated_at),
-  }));
+  const results = filtered.map((item) => {
+    let createdAt = safeISO(item.created_at);
+    let updatedAt = safeISO(item.updated_at);
+    // Normalize: if only one timestamp exists, copy to the other.
+    if (!createdAt && updatedAt) createdAt = updatedAt;
+    if (!updatedAt && createdAt) updatedAt = createdAt;
+    return {
+      id: item.uuid,
+      title: item.name || 'Untitled Conversation',
+      url: `https://claude.ai/chat/${item.uuid}`,
+      createdAt,
+      updatedAt,
+    };
+  });
+
+  // Sort by most recently updated first.
+  results.sort((a, b) => {
+    const ta = a.updatedAt || a.createdAt || '';
+    const tb = b.updatedAt || b.createdAt || '';
+    return tb.localeCompare(ta);
+  });
+
+  return results;
 }
 
 

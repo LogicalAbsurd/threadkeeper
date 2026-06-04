@@ -517,7 +517,9 @@ async function listConversations() {
 
     const fullUrl = anchor?.href || `https://gemini.google.com/app/${id}`;
 
-    conversations.push({ id, title, url: fullUrl });
+    // Gemini's sidebar DOM does not expose timestamps — fields set to
+    // undefined for interface consistency. No recency sort possible.
+    conversations.push({ id, title, url: fullUrl, createdAt: undefined, updatedAt: undefined });
   }
 
   console.log(`[TK-DIAG] listConversations — returning ${conversations.length} conversations`);

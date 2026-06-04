@@ -297,12 +297,21 @@ body {
 }
 
 .chat-item-label {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
+}
+
+.chat-item-date {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .export-bar {
