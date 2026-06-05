@@ -2,7 +2,7 @@
 
 Export your AI chat conversations to Markdown or JSON. Your data, your disk, your archive.
 
-A Firefox and Chrome (Manifest V3) browser extension that exports conversations from ChatGPT, Claude.ai, and Google Gemini to local Markdown or JSON files. No accounts, no servers, no API keys — everything runs in the browser against the sites you're already logged into.
+A Firefox browser extension (Manifest V3, with a Chrome port planned) that exports conversations from ChatGPT, Claude.ai, and Google Gemini to local Markdown or JSON files. No accounts, no servers, no API keys — everything runs in the browser against the sites you're already logged into.
 
 <p align="center">
   <img src="screenshots/popup-claude.png" alt="Threadkeeper popup on Claude.ai" width="320">
@@ -10,13 +10,13 @@ A Firefox and Chrome (Manifest V3) browser extension that exports conversations 
 
 ## Status
 
-Threadkeeper is in a working, late-development stage supporting exports from all three platforms. Planned: UX design, further documentation, a future-features brainstorm, Mozilla Add-ons / Chrome Web Store submission, and possible monetization.
+Threadkeeper currently runs on Firefox, exporting conversations from ChatGPT, Claude.ai, and Google Gemini to local Markdown or JSON files. Chrome port, packaged builds, and extension-store submission are planned next.
 
 ## Features
 
 - **Three platforms:** ChatGPT, Claude.ai, Google Gemini
 - **Export modes:** single conversation, bulk (all), or selective (pick from a searchable checklist)
-- **Output formats:** Markdown (primary) and JSON (raw backup), individually or combined
+- **Output formats:** Markdown (primary, drops cleanly into Obsidian and other notes apps) and JSON (raw structured backup), individually or combined
 - **Preserves** code blocks, conversation structure, and message ordering
 - **Claude.ai extras:** optional extended-thinking blocks; artifacts rendered inline
 - **Local-only:** no network calls beyond the AI sites themselves; no analytics, no telemetry
@@ -29,13 +29,13 @@ Threadkeeper is in a working, late-development stage supporting exports from all
 
 ## Installation
 
-Threadkeeper is not yet on extension stores. For now, install it as a temporary add-on:
+Threadkeeper is not yet on extension stores. For now, install it as a temporary Firefox add-on:
 
 1. Clone or download this repo.
 2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`.
 3. Click **Load Temporary Add-on** and select the `manifest.json` file from the repo root.
 
-Permanent install via Mozilla Add-ons and the Chrome Web Store is planned.
+The add-on will remain active until Firefox closes. Permanent install via Mozilla Add-ons (and Chrome Web Store, after the Chrome port lands) is planned.
 
 ## Usage
 
@@ -66,6 +66,7 @@ All processing happens locally in your browser. Host permissions are scoped to e
 Gemini does not expose conversation timestamps in its sidebar DOM, and Threadkeeper does not currently make additional requests to fetch them per-conversation. As a result, Gemini conversations appear in the export list without creation dates, and are shown in the order they appear in Gemini's sidebar rather than sorted by recency. ChatGPT and Claude.ai conversations show dates and are sorted by creation date (newest first).
 
 ### Conversations from deleted Gems
+
 If you previously created a Gem (custom Gemini persona) and later deleted it, conversations you had with that Gem become "orphaned" — they remain in Gemini's search but lose their title-rendering context. Threadkeeper will export their content correctly, but uses the first user message as the filename instead of a proper title.
 
 ## Acknowledgments
