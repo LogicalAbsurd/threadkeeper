@@ -193,7 +193,7 @@ function renderChatList(conversations, autoSelectAll) {
     item.appendChild(checkbox);
     item.appendChild(label);
 
-    const dateStr = formatDate(conv.createdAt || conv.updatedAt);
+    const dateStr = formatDate(conv.createdAt) || formatDate(conv.updatedAt);
     if (dateStr) {
       const dateSpan = document.createElement('span');
       dateSpan.className = 'chat-item-date';

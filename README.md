@@ -61,6 +61,10 @@ All processing happens locally in your browser. Host permissions are scoped to e
 
 ## Known limitations
 
+### Gemini conversation dates
+
+Gemini does not expose conversation timestamps in its sidebar DOM, and Threadkeeper does not currently make additional requests to fetch them per-conversation. As a result, Gemini conversations appear in the export list without creation dates, and are shown in the order they appear in Gemini's sidebar rather than sorted by recency. ChatGPT and Claude.ai conversations show dates and are sorted by creation date (newest first).
+
 ### Conversations from deleted Gems
 If you previously created a Gem (custom Gemini persona) and later deleted it, conversations you had with that Gem become "orphaned" — they remain in Gemini's search but lose their title-rendering context. Threadkeeper will export their content correctly, but uses the first user message as the filename instead of a proper title.
 
