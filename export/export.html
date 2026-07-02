@@ -1,123 +1,209 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- Copyright (C) 2026 Chris (LogicalAbsurd) -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Threadkeeper — Bulk Export</title>
-  <link rel="stylesheet" href="export.css">
-</head>
-<body>
-  <div class="page-shell">
-    <header class="page-header">
-      <div class="header-inner">
-        <h1>Threadkeeper</h1>
-        <span id="site-badge" class="site-badge"></span>
-        <span class="header-subtitle">Export</span>
-      </div>
-    </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Threadkeeper — Bulk Export</title>
+        <link rel="stylesheet" href="export.css" />
+    </head>
+    <body>
+        <div class="page-shell">
+            <header class="page-header">
+                <div class="header-inner">
+                    <h1>Threadkeeper</h1>
+                    <span id="site-badge" class="site-badge"></span>
+                    <span class="header-subtitle">Export</span>
+                    <footer class="page-footer">
+                        <a
+                            href="https://github.com/sponsors/LogicalAbsurd"
+                            target="_blank"
+                            rel="noopener"
+                            >Support this project</a
+                        >
+                    </footer>
+                </div>
+            </header>
 
-    <main class="page-main">
+            <main class="page-main">
+                <!-- Configuration options -->
+                <section id="section-config" class="card" hidden>
+                    <h2 class="card-title">Export Options</h2>
+                    <div class="option-row">
+                        <span class="option-label">Format</span>
+                        <div class="segmented-control">
+                            <label class="seg-option"
+                                ><input
+                                    type="radio"
+                                    name="format"
+                                    value="markdown"
+                                    checked
+                                /><span>Markdown</span></label
+                            >
+                            <label class="seg-option"
+                                ><input
+                                    type="radio"
+                                    name="format"
+                                    value="json"
+                                /><span>JSON</span></label
+                            >
+                            <label class="seg-option"
+                                ><input
+                                    type="radio"
+                                    name="format"
+                                    value="both"
+                                /><span>Both</span></label
+                            >
+                        </div>
+                    </div>
+                    <div class="option-row">
+                        <span class="option-label">Output</span>
+                        <div class="segmented-control">
+                            <label class="seg-option"
+                                ><input
+                                    type="radio"
+                                    name="output"
+                                    value="individual"
+                                /><span>Individual</span></label
+                            >
+                            <label class="seg-option"
+                                ><input
+                                    type="radio"
+                                    name="output"
+                                    value="combined"
+                                /><span>Combined</span></label
+                            >
+                            <label class="seg-option"
+                                ><input
+                                    type="radio"
+                                    name="output"
+                                    value="both"
+                                    checked
+                                /><span>Both</span></label
+                            >
+                        </div>
+                    </div>
+                    <div class="option-row" id="row-archive" hidden>
+                        <span class="option-label">Include</span>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="opt-include-archived" />
+                            <span>Archived</span>
+                        </label>
+                    </div>
+                    <div class="option-row" id="row-thinking" hidden>
+                        <span class="option-label">Include</span>
+                        <label class="checkbox-option">
+                            <input
+                                type="checkbox"
+                                id="opt-include-thinking"
+                                checked
+                            />
+                            <span>Thinking blocks</span>
+                        </label>
+                    </div>
+                </section>
 
-      <!-- Configuration options -->
-      <section id="section-config" class="card" hidden>
-        <h2 class="card-title">Export Options</h2>
-        <div class="option-row">
-          <span class="option-label">Format</span>
-          <div class="segmented-control">
-            <label class="seg-option"><input type="radio" name="format" value="markdown" checked><span>Markdown</span></label>
-            <label class="seg-option"><input type="radio" name="format" value="json"><span>JSON</span></label>
-            <label class="seg-option"><input type="radio" name="format" value="both"><span>Both</span></label>
-          </div>
-        </div>
-        <div class="option-row">
-          <span class="option-label">Output</span>
-          <div class="segmented-control">
-            <label class="seg-option"><input type="radio" name="output" value="individual"><span>Individual</span></label>
-            <label class="seg-option"><input type="radio" name="output" value="combined"><span>Combined</span></label>
-            <label class="seg-option"><input type="radio" name="output" value="both" checked><span>Both</span></label>
-          </div>
-        </div>
-        <div class="option-row" id="row-archive" hidden>
-          <span class="option-label">Include</span>
-          <label class="checkbox-option">
-            <input type="checkbox" id="opt-include-archived">
-            <span>Archived</span>
-          </label>
-        </div>
-        <div class="option-row" id="row-thinking" hidden>
-          <span class="option-label">Include</span>
-          <label class="checkbox-option">
-            <input type="checkbox" id="opt-include-thinking" checked>
-            <span>Thinking blocks</span>
-          </label>
-        </div>
-      </section>
+                <!-- Loading indicator -->
+                <section id="section-loading" class="card" hidden>
+                    <div class="loading-row">
+                        <div class="spinner"></div>
+                        <p id="loading-message">Loading conversations…</p>
+                        <p id="loading-warning" class="loading-warning" hidden>
+                            Be patient during the conversation load process.
+                            Depending on how many conversations you have,
+                            gathering all the titles can take full minutes.
+                        </p>
+                    </div>
+                </section>
 
-      <!-- Loading indicator -->
-      <section id="section-loading" class="card" hidden>
-        <div class="loading-row">
-          <div class="spinner"></div>
-          <p id="loading-message">Loading conversations…</p>
-          <p id="loading-warning" class="loading-warning" hidden>
-            Be patient during the conversation load process. Depending on how many conversations you have, gathering all the titles can take full minutes.
-          </p>
-        </div>
-      </section>
+                <!-- Conversation list + selection -->
+                <section id="section-list" class="card" hidden>
+                    <div class="list-header">
+                        <input
+                            type="search"
+                            id="filter-input"
+                            class="filter-input"
+                            placeholder="Search conversations…"
+                        />
+                        <div class="selection-controls">
+                            <button id="btn-select-all" class="btn btn-sm">
+                                All
+                            </button>
+                            <button id="btn-select-none" class="btn btn-sm">
+                                None
+                            </button>
+                            <button id="btn-select-invert" class="btn btn-sm">
+                                Invert
+                            </button>
+                        </div>
+                    </div>
+                    <div id="warning-large" class="notice warning" hidden>
+                        Large export: this may take a while. The site may
+                        rate-limit requests.
+                    </div>
+                    <div id="chat-list" class="chat-list"></div>
+                    <div class="export-bar">
+                        <span id="selected-count" class="selected-count"
+                            >0 selected</span
+                        >
+                        <button
+                            id="btn-start-export"
+                            class="btn btn-primary"
+                            disabled
+                        >
+                            Export
+                        </button>
+                    </div>
+                </section>
 
-      <!-- Conversation list + selection -->
-      <section id="section-list" class="card" hidden>
-        <div class="list-header">
-          <input type="search" id="filter-input" class="filter-input" placeholder="Search conversations…">
-          <div class="selection-controls">
-            <button id="btn-select-all" class="btn btn-sm">All</button>
-            <button id="btn-select-none" class="btn btn-sm">None</button>
-            <button id="btn-select-invert" class="btn btn-sm">Invert</button>
-          </div>
-        </div>
-        <div id="warning-large" class="notice warning" hidden>
-          Large export: this may take a while. The site may rate-limit requests.
-        </div>
-        <div id="chat-list" class="chat-list"></div>
-        <div class="export-bar">
-          <span id="selected-count" class="selected-count">0 selected</span>
-          <button id="btn-start-export" class="btn btn-primary" disabled>Export</button>
-        </div>
-      </section>
+                <!-- Export progress -->
+                <section id="section-progress" class="card" hidden>
+                    <div class="progress-top">
+                        <h2 class="card-title" id="progress-phase-label">
+                            Exporting…
+                        </h2>
+                        <span id="progress-time" class="progress-time"
+                            >0:00 elapsed</span
+                        >
+                    </div>
+                    <div class="progress-bar-track">
+                        <div
+                            id="progress-bar-fill"
+                            class="progress-bar-fill"
+                            style="width: 0%"
+                        ></div>
+                    </div>
+                    <p id="progress-counts" class="progress-counts">0 / 0</p>
+                    <p id="progress-current" class="progress-current">
+                        Preparing…
+                    </p>
+                    <div id="progress-log" class="progress-log"></div>
+                    <div class="progress-actions">
+                        <button id="btn-pause" class="btn">Pause</button>
+                        <button id="btn-cancel" class="btn btn-danger">
+                            Cancel
+                        </button>
+                    </div>
+                </section>
 
-      <!-- Export progress -->
-      <section id="section-progress" class="card" hidden>
-        <div class="progress-top">
-          <h2 class="card-title" id="progress-phase-label">Exporting…</h2>
-          <span id="progress-time" class="progress-time">0:00 elapsed</span>
+                <!-- Completion summary -->
+                <section id="section-complete" class="card" hidden>
+                    <h2 class="card-title">Export Complete</h2>
+                    <p id="summary-text" class="summary-text"></p>
+                    <div id="failed-list" class="failed-list" hidden></div>
+                    <div class="complete-actions">
+                        <button id="btn-retry-failed" class="btn" hidden>
+                            Retry Failed
+                        </button>
+                        <button id="btn-new-export" class="btn btn-primary">
+                            New Export
+                        </button>
+                    </div>
+                </section>
+            </main>
         </div>
-        <div class="progress-bar-track">
-          <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
-        </div>
-        <p id="progress-counts" class="progress-counts">0 / 0</p>
-        <p id="progress-current" class="progress-current">Preparing…</p>
-        <div id="progress-log" class="progress-log"></div>
-        <div class="progress-actions">
-          <button id="btn-pause" class="btn">Pause</button>
-          <button id="btn-cancel" class="btn btn-danger">Cancel</button>
-        </div>
-      </section>
 
-      <!-- Completion summary -->
-      <section id="section-complete" class="card" hidden>
-        <h2 class="card-title">Export Complete</h2>
-        <p id="summary-text" class="summary-text"></p>
-        <div id="failed-list" class="failed-list" hidden></div>
-        <div class="complete-actions">
-          <button id="btn-retry-failed" class="btn" hidden>Retry Failed</button>
-          <button id="btn-new-export" class="btn btn-primary">New Export</button>
-        </div>
-      </section>
-
-    </main>
-  </div>
-
-  <script src="export.js"></script>
-</body>
+        <script src="export.js"></script>
+    </body>
 </html>

@@ -4,6 +4,8 @@ Export your AI chat conversations to Markdown or JSON. Your data, your disk, you
 
 A Firefox browser extension (Manifest V3, with a Chrome port planned) that exports conversations from ChatGPT, Claude.ai, and Google Gemini to local Markdown or JSON files. No accounts, no servers, no API keys — everything runs in the browser against the sites you're already logged into.
 
+If you find Threadkeeper useful and would like to support me: [![GitHub Sponsors](https://img.shields.io/github/sponsors/LogicalAbsurd?style=flat&logo=github)](https://github.com/sponsors/LogicalAbsurd)
+
 <p align="center">
   <img src="screenshots/popup-claude.png" alt="Threadkeeper popup on Claude.ai" width="320">
 </p>
